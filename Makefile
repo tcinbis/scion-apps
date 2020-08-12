@@ -24,6 +24,7 @@ build: scion-bat \
 	scion-skip \
 	scion-ssh scion-sshd \
 	scion-webapp \
+	example-boingboing \
 	example-helloworld \
 	example-hellodrkey \
 	example-shttp-client example-shttp-server example-shttp-fileserver example-shttp-proxy
@@ -43,13 +44,14 @@ lint:
 	@type golangci-lint > /dev/null || ( echo "golangci-lint not found. Install it manually or by running 'make setup_lint'."; exit 1 )
 	golangci-lint run --build-tags=$(TAGS) --timeout=2m0s -v
 
+
 install: all
   # Note: install everything but the examples
 	mkdir -p $(DESTDIR)
 	cp -t $(DESTDIR) $(BIN)/scion-*
 
 integration: build
-	go test -v -tags=integration,$(TAGS) ./... ./_examples/helloworld/
+	go test -v -tags=integration,$(TAGS) ./... ./_examples/helloworld/ ./_examples/boingboing/
 
 .PHONY: scion-bat
 scion-bat:
@@ -106,6 +108,10 @@ scion-sshd:
 .PHONY: scion-webapp
 scion-webapp:
 	go build -tags=$(TAGS) -o $(BIN)/$@ ./webapp/
+
+.PHONY: example-boingboing
+example-boingboing:
+	go build -tags=$(TAGS) -o $(BIN)/$@ ./_examples/boingboing/
 
 .PHONY: example-helloworld
 example-helloworld:
