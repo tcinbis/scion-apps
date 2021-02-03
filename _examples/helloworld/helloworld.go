@@ -15,11 +15,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
+	"github.com/netsec-ethz/scion-apps/pkg/pan"
 )
 
 func main() {
@@ -37,8 +40,10 @@ func main() {
 		err = runServer(uint16(*port))
 		check(err)
 	} else {
-		err = runClient(*remoteAddr)
-		check(err)
+		for {
+			err = runClient(*remoteAddr)
+			check(err)
+		}
 	}
 }
 
@@ -48,6 +53,7 @@ func runServer(port uint16) error {
 		return err
 	}
 	defer conn.Close()
+	fmt.Println(conn.LocalAddr())
 
 	buffer := make([]byte, 16*1024)
 	for {
@@ -61,17 +67,35 @@ func runServer(port uint16) error {
 }
 
 func runClient(address string) error {
-	conn, err := appnet.Dial(address)
+	addr, err := pan.ParseUDPAddr(address)
 	if err != nil {
 		return err
 	}
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	conn, err := pan.DialUDP(ctx, nil, addr, nil, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Println("err", err)
 	defer conn.Close()
 
-	nBytes, err := conn.Write([]byte("hello world"))
-	if err != nil {
-		return err
+	go func() {
+		for {
+			buf := []byte{}
+			_, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+		}
+	}()
+	for i := 0; i < 10; i++ {
+		nBytes, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Wrote %d bytes.\n", nBytes)
+		time.Sleep(1 * time.Second)
 	}
-	fmt.Printf("Done. Wrote %d bytes.\n", nBytes)
 	return nil
 }
 
