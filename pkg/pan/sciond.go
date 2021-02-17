@@ -150,6 +150,20 @@ func defaultLocalIP() (net.IP, error) {
 	return addrutil.ResolveLocal(host().hostInLocalAS)
 }
 
+func defaultLocalAddr(local *net.UDPAddr) error {
+	if local == nil {
+		local = &net.UDPAddr{}
+	}
+	if local.IP == nil || local.IP.IsUnspecified() {
+		localIP, err := defaultLocalIP()
+		if err != nil {
+			return err
+		}
+		local = &net.UDPAddr{IP: localIP, Port: local.Port, Zone: local.Zone}
+	}
+	return nil
+}
+
 func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]Path, error) {
 	return h.sciond.Paths(ctx, dst, IA{}, daemon.PathReqFlags{Refresh: false, Hidden: false})
 }

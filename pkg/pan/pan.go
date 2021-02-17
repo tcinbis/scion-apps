@@ -111,6 +111,7 @@ func ParseUDPAddr(s string) (UDPAddr, error) {
 	}, nil
 }
 
+// XXX: rename. "pathSequenceKey"?
 type pathFingerprint = string
 
 // XXX I want this to be included directly on the path. Also, this might as

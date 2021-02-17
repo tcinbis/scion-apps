@@ -23,12 +23,6 @@ import (
 
 var errNoPath error = errors.New("no path")
 
-// Policy is a stateless filter / sorter for paths.
-type Policy interface {
-	// Filter and prioritize paths
-	Filter(paths []Path, local, remote UDPAddr) []Path
-}
-
 // Selector (or Router, Pather, Scheduler?) is owned by a single **connected** socket. Stateful.
 // The Path() function is invoked for every single packet.
 type Selector interface {
@@ -37,19 +31,17 @@ type Selector interface {
 	OnPathDown(Path, PathInterface)
 }
 
-// XXX: should policy be part of the selector? would generalize things a bit. Mostly the same thing, just move the policy evaluation into SetPaths. But it's a bit awkward because of the local/remote addresses inputs to the policy...
+// XXX: should policy be part of the selector? would generalize things a bit.
+// Mostly the same thing, just move the policy evaluation into SetPaths. But
+// it's a bit awkward because of the local/remote addresses inputs to the
+// policy...
+// It would make "SetPolicy" a bit easier though..
+// Perhaps expose the subscribe interface? ;/
 func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector) (net.Conn, error) {
 
-	// XXX: does not currently work for local connections
-	if local == nil {
-		local = &net.UDPAddr{}
-	}
-	if local.IP == nil || local.IP.IsUnspecified() {
-		localIP, err := defaultLocalIP()
-		if err != nil {
-			return nil, err
-		}
-		local = &net.UDPAddr{IP: localIP, Port: local.Port, Zone: local.Zone}
+	err := defaultLocalAddr(local)
+	if err != nil {
+		return nil, err
 	}
 
 	if selector == nil {
@@ -60,6 +52,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Pol
 	if err != nil {
 		return nil, err
 	}
+	// XXX: dont do this for dst in local IA!
 	subscriber, err := openPolicySubscriber(ctx, policy, slocal, remote, selector)
 	if err != nil {
 		return nil, err
@@ -166,41 +159,6 @@ func (s *policySubscriber) setFilteredPaths(paths []Path) {
 		fmt.Println(p)
 	}
 	s.target.SetPaths(paths)
-}
-
-///////////////// policies
-type Pinned struct {
-	sequence []pathFingerprint
-}
-
-func (p *Pinned) Filter(paths []Path, src, dst UDPAddr) []Path {
-	filtered := make([]Path, 0, len(p.sequence))
-	for _, s := range p.sequence {
-		for _, p := range paths {
-			if fingerprint(p) == s {
-				filtered = append(filtered, p)
-				break
-			}
-		}
-	}
-	return filtered
-}
-
-type Preferred struct {
-	sequence []pathFingerprint
-}
-
-func (p *Preferred) Filter(paths []Path, src, dst UDPAddr) []Path {
-	filtered := make([]Path, 0, len(p.sequence))
-	for _, s := range p.sequence {
-		for _, p := range paths {
-			if fingerprint(p) == s {
-				filtered = append(filtered, p)
-				break
-			}
-		}
-	}
-	return filtered
 }
 
 //////////////////// selector
