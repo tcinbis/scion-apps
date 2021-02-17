@@ -93,6 +93,12 @@ func (a UDPAddr) String() string {
 	return fmt.Sprintf("%s,%s:%d", a.IA, a.IP, a.Port) // XXX: use snet stuff?
 }
 
+func (a UDPAddr) Equal(x UDPAddr) bool {
+	return a.IA == x.IA &&
+		a.IP.Equal(x.IP) &&
+		a.Port == x.Port
+}
+
 func ParseUDPAddr(s string) (UDPAddr, error) {
 	addr, err := snet.ParseUDPAddr(s)
 	if err != nil {
@@ -125,10 +131,6 @@ func isInterfaceOnPath(p Path, pi PathInterface) bool {
 	}
 	return false
 }
-
-//func ListenUDP(local net.UDPAddr, router Router) (net.PacketConn, error) {
-//return nil, nil
-//}
 
 type RecordedPathRouter struct {
 	paths map[string]Path // map[UDPAddr]

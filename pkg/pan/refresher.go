@@ -16,7 +16,6 @@ package pan
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -80,13 +79,11 @@ func (r *refresher) run() {
 			// just set the timer again:
 			// we could be smarter, but why should we
 			nextRefresh := r.untilNextRefresh(prevRefresh)
-			fmt.Println("next refresh in", nextRefresh)
 			resetTimer(refreshTimer, nextRefresh)
 		case <-refreshTimer.C:
 			r.refresh()
 			prevRefresh = time.Now()
 			nextRefresh := r.untilNextRefresh(prevRefresh)
-			fmt.Println("next refresh in", nextRefresh)
 			refreshTimer.Reset(nextRefresh)
 		}
 	}
@@ -124,8 +121,7 @@ func (r *refresher) earliestPathExpiry() time.Time {
 	r.pool.entriesMutex.RLock() // XXX: fiddly sync, should be private to pool or ok?
 	defer r.pool.entriesMutex.RUnlock()
 	ret := maxTime
-	for ia, entry := range r.pool.entries {
-		fmt.Println("earliestPathExpiry", "entry:", ia, entry.earliestExpiry)
+	for _, entry := range r.pool.entries {
 		if entry.earliestExpiry.Before(ret) {
 			ret = entry.earliestExpiry
 		}
@@ -142,13 +138,10 @@ func (r *refresher) nextRefresh(prevRefresh time.Time) time.Time {
 		return maxTime
 	}
 	nextRefresh := prevRefresh.Add(pathRefreshInterval)
-	fmt.Println("nextRefresh", "nextRefresh:", nextRefresh)
 
 	expiry := r.earliestPathExpiry()
-	fmt.Println("nextRefresh", "expiry:", expiry)
 	randOffset := time.Duration(rand.Intn(10)) * time.Second // avoid everbody refreshing simultaniously
 	expiryRefresh := expiry.Add(-pathExpiryRefreshLeadTime + randOffset)
-	fmt.Println("nextRefresh", "expiryRefresh:", expiryRefresh)
 
 	if expiryRefresh.Before(nextRefresh) {
 		nextRefresh = expiryRefresh
@@ -158,12 +151,9 @@ func (r *refresher) nextRefresh(prevRefresh time.Time) time.Time {
 	// we still wait a little bit until the next refresh. Otherwise, failing
 	// refresh of an expired path would make us refresh continuously.
 	earliestAllowed := prevRefresh.Add(pathRefreshMinInterval)
-	fmt.Println("nextRefresh", "earliestAllowed:", earliestAllowed)
 	if nextRefresh.Before(earliestAllowed) {
-		fmt.Println("nextRefresh", "return earliestAllowed")
 		return earliestAllowed
 	}
-	fmt.Println("nextRefresh", "return nextRefresh")
 	return nextRefresh
 }
 
