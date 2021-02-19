@@ -18,10 +18,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
-	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 )
 
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	if *port > 0 {
-		err = runServer(uint16(*port))
+		err = runServer(int(*port))
 		check(err)
 	} else {
 		for {
@@ -47,8 +47,8 @@ func main() {
 	}
 }
 
-func runServer(port uint16) error {
-	conn, err := appnet.ListenPort(port)
+func runServer(port int) error {
+	conn, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: port}, nil)
 	if err != nil {
 		return err
 	}
@@ -63,6 +63,9 @@ func runServer(port uint16) error {
 		}
 		data := buffer[:n]
 		fmt.Printf("Received %s: %s\n", from, data)
+		msg := fmt.Sprintf("take it back! %s", time.Now().Format("15:04:05.0"))
+		n, err = conn.WriteTo([]byte(msg), from)
+		fmt.Printf("Wrote %d bytes.\n", n)
 	}
 }
 
@@ -71,8 +74,7 @@ func runClient(address string) error {
 	if err != nil {
 		return err
 	}
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-	conn, err := pan.DialUDP(ctx, nil, addr, nil, nil)
+	conn, err := pan.DialUDP(context.Background(), nil, addr, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -80,12 +82,14 @@ func runClient(address string) error {
 	defer conn.Close()
 
 	go func() {
+		buffer := make([]byte, 16*1024)
 		for {
-			buf := []byte{}
-			_, err := conn.Read(buf)
+			n, err := conn.Read(buffer)
 			if err != nil {
 				return
 			}
+			data := buffer[:n]
+			fmt.Printf("Received reply: %s\n", data)
 		}
 	}()
 	for i := 0; i < 10; i++ {
@@ -102,7 +106,7 @@ func runClient(address string) error {
 // Check just ensures the error is nil, or complains and quits
 func check(e error) {
 	if e != nil {
-		fmt.Fprintln(os.Stderr, "Fatal error. Exiting.", "err", e)
+		fmt.Fprintln(os.Stderr, "Fatal error:", e)
 		os.Exit(1)
 	}
 }

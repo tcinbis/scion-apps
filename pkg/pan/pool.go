@@ -35,7 +35,7 @@ var pool pathPool
 type pathPoolDst struct {
 	lastQuery      time.Time
 	earliestExpiry time.Time
-	paths          []Path
+	paths          []*Path
 }
 
 type pathPool struct {
@@ -57,7 +57,7 @@ func init() {
 	go pool.refresher.run()
 }
 
-func (p *pathPool) subscribe(ctx context.Context, dstIA IA, s subscriber) ([]Path, error) {
+func (p *pathPool) subscribe(ctx context.Context, dstIA IA, s subscriber) ([]*Path, error) {
 	return p.refresher.subscribe(ctx, dstIA, s)
 }
 
@@ -66,12 +66,12 @@ func (p *pathPool) unsubscribe(dstIA IA, s subscriber) {
 }
 
 // paths returns paths to dstIA. This _may_ query paths, unless they have recently been queried.
-func (p *pathPool) paths(ctx context.Context, dstIA IA) ([]Path, error) {
+func (p *pathPool) paths(ctx context.Context, dstIA IA) ([]*Path, error) {
 	p.entriesMutex.RLock()
 	if entry, ok := p.entries[dstIA]; ok {
 		if time.Since(entry.lastQuery) > pathRefreshMinInterval {
 			defer p.entriesMutex.RUnlock()
-			return append([]Path{}, entry.paths...), nil
+			return append([]*Path{}, entry.paths...), nil
 		}
 	}
 	p.entriesMutex.RUnlock()
@@ -79,7 +79,7 @@ func (p *pathPool) paths(ctx context.Context, dstIA IA) ([]Path, error) {
 }
 
 // queryPaths returns paths to dstIA. Unconditionally requests paths from sciond.
-func (p *pathPool) queryPaths(ctx context.Context, dstIA IA) ([]Path, error) {
+func (p *pathPool) queryPaths(ctx context.Context, dstIA IA) ([]*Path, error) {
 	paths, err := host().queryPaths(ctx, dstIA)
 	if err != nil {
 		return nil, err
@@ -89,14 +89,14 @@ func (p *pathPool) queryPaths(ctx context.Context, dstIA IA) ([]Path, error) {
 	entry := p.entries[dstIA]
 	entry.update(paths)
 	p.entries[dstIA] = entry
-	return append([]Path{}, paths...), nil
+	return append([]*Path{}, paths...), nil
 }
 
 // cachedPaths returns paths to dstIA. Always returns the cached paths, never queries paths.
-func (p *pathPool) cachedPaths(dst IA) []Path {
+func (p *pathPool) cachedPaths(dst IA) []*Path {
 	p.entriesMutex.RLock()
 	defer p.entriesMutex.RUnlock()
-	return append([]Path{}, p.entries[dst].paths...)
+	return append([]*Path{}, p.entries[dst].paths...)
 }
 
 func (p *pathPool) entry(dstIA IA) (pathPoolDst, bool) {
@@ -106,7 +106,7 @@ func (p *pathPool) entry(dstIA IA) (pathPoolDst, bool) {
 	return e, ok
 }
 
-func (e *pathPoolDst) update(paths []Path) {
+func (e *pathPoolDst) update(paths []*Path) {
 	now := time.Now()
 	expiryDropTime := now.Add(-pathExpiryPruneLeadTime)
 
@@ -115,10 +115,10 @@ func (e *pathPoolDst) update(paths []Path) {
 	// back (but in same order)
 	newPathSet := make(map[pathFingerprint]struct{}, len(paths))
 	for _, p := range paths {
-		newPathSet[fingerprint(p)] = struct{}{}
+		newPathSet[p.Fingerprint] = struct{}{}
 	}
 	for _, old := range e.paths {
-		if _, ok := newPathSet[fingerprint(old)]; !ok && old.Metadata().Expiry.After(expiryDropTime) {
+		if _, ok := newPathSet[old.Fingerprint]; !ok && old.Expiry.After(expiryDropTime) {
 			paths = append(paths, old)
 		}
 	}
@@ -128,10 +128,10 @@ func (e *pathPoolDst) update(paths []Path) {
 	e.paths = paths
 }
 
-func earliestPathExpiry(paths []Path) time.Time {
+func earliestPathExpiry(paths []*Path) time.Time {
 	ret := maxTime
 	for _, p := range paths {
-		expiry := p.Metadata().Expiry
+		expiry := p.Expiry
 		if expiry.Before(ret) {
 			ret = expiry
 		}

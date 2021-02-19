@@ -17,26 +17,41 @@ package pan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
+	"time"
 )
+
+/*
+
+- never lookup paths during sending a packet
+- assumption: listener only ever replies. Seems like an ok restriction to make.
+  We could have proper unconnected conn by combining this with the Dial logic, but things get more complicated (is it worth keeping these paths up to date? etc...)
+- Observation:
+	- path oblivient upper layers cannot just keep using same path forever (snet/squic approach)
+	- a path aware application can use path-y API to explicitly reply without the reply path recording overhead
+*/
 
 var errBadDstAddress error = errors.New("dst address not a UDPAddr")
 
 type ReplySelector interface {
-	ReplyPath(src, dst UDPAddr) (Path, error)
-	OnPacketReceived(src, dst UDPAddr, path Path)
-	OnPathDown(Path, PathInterface)
+	ReplyPath(src, dst UDPAddr) (*Path, error)
+	OnPacketReceived(src, dst UDPAddr, path *Path)
+	OnPathDown(*Path, PathInterface)
 }
 
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	selector ReplySelector) (net.PacketConn, error) {
 
-	err := defaultLocalAddr(local)
+	local, err := defaultLocalAddr(local)
 	if err != nil {
 		return nil, err
 	}
 
+	if selector == nil {
+		selector = NewDefaultReplySelector()
+	}
 	raw, slocal, err := openScionPacketConn(ctx, local, selector)
 	if err != nil {
 		return nil, err
@@ -45,7 +60,8 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 		scionUDPConn: scionUDPConn{
 			raw: raw,
 		},
-		local: slocal,
+		local:    slocal,
+		selector: selector,
 	}, nil
 }
 
@@ -61,12 +77,34 @@ func (c *unconnectedConn) LocalAddr() net.Addr {
 }
 
 func (c *unconnectedConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	n, remote, err := c.scionUDPConn.readMsg(b)
-	if err != nil {
-		return n, nil, err
-	}
-	c.selector.OnPacketReceived(remote, c.local, nil)
+	n, remote, path, err := c.ReadFromPath(b)
+	fmt.Println(n, remote, path, err)
+	c.selector.OnPacketReceived(remote, c.local, path)
 	return n, remote, err
+}
+
+// XXX: expose this
+func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
+	n, remote, fwPath, err := c.scionUDPConn.readMsg(b)
+	if err != nil {
+		return n, UDPAddr{}, nil, err
+	}
+	err = fwPath.spath.Reverse()
+	if err != nil {
+		return n, UDPAddr{}, nil, err
+	}
+	fpi, err := fwPath.forwardingPathInfo()
+	fingerprint := pathSequence{
+		Source:       c.local.IA,
+		Destination:  remote.IA,
+		InterfaceIDs: fpi.interfaceIDs,
+	}.Fingerprint()
+	path := &Path{
+		ForwardingPath: fwPath,
+		Expiry:         fpi.expiry,
+		Fingerprint:    fingerprint,
+	}
+	return n, remote, path, err
 }
 
 func (c *unconnectedConn) WriteTo(b []byte, dst net.Addr) (int, error) {
@@ -104,28 +142,55 @@ func makeKey(a UDPAddr) udpAddrKey {
 
 type DefaultReplySelector struct {
 	mtx       sync.RWMutex
-	replyPath map[udpAddrKey][]Path
+	replyPath map[udpAddrKey][]replyPathEntry
 }
 
-func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) (Path, error) {
+type replyPathEntry struct {
+	path *Path
+	seen time.Time
+}
+
+func NewDefaultReplySelector() *DefaultReplySelector {
+	return &DefaultReplySelector{
+		replyPath: make(map[udpAddrKey][]replyPathEntry),
+	}
+}
+
+func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) (*Path, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	paths, ok := s.replyPath[makeKey(dst)]
 	if !ok || len(paths) == 0 {
 		return nil, errNoPath
 	}
-	return paths[0], nil
-}
-
-func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path Path) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	paths := s.replyPath[makeKey(src)]
-	for _, p := range paths {
-		if fingerprint(p) == fingerprint(path) {
-
+	mostRecent := 0
+	for i := 1; i < len(paths); i++ {
+		// TODO check stats DB
+		if paths[i].seen.After(paths[mostRecent].seen) {
+			mostRecent = i
 		}
 	}
+	return paths[mostRecent].path, nil
 }
 
-func (s *DefaultReplySelector) OnPathDown(Path, PathInterface) {}
+func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	ksrc := makeKey(src)
+	paths := s.replyPath[ksrc]
+	for _, e := range paths {
+		if e.path.Fingerprint == path.Fingerprint {
+			e.path = path
+			e.seen = time.Now()
+			return
+		}
+	}
+	s.replyPath[ksrc] = append(paths, replyPathEntry{
+		path: path,
+		seen: time.Now(),
+	})
+}
+
+func (s *DefaultReplySelector) OnPathDown(*Path, PathInterface) {
+	// TODO: report to stats DB
+}

@@ -21,7 +21,7 @@ import (
 )
 
 type subscriber interface {
-	refresh(dst IA, paths []Path)
+	refresh(dst IA, paths []*Path)
 }
 
 type refresher struct {
@@ -31,7 +31,7 @@ type refresher struct {
 }
 
 // subscribe for paths to dst.
-func (r *refresher) subscribe(ctx context.Context, dst IA, s subscriber) ([]Path, error) {
+func (r *refresher) subscribe(ctx context.Context, dst IA, s subscriber) ([]*Path, error) {
 	// XXX: oops, this will not inform subscribers of updated paths. Need to explicily check here
 	paths, err := r.pool.paths(ctx, dst)
 	if err != nil {

@@ -27,7 +27,7 @@ import (
 )
 
 type pathDownHandler interface {
-	OnPathDown(Path, PathInterface)
+	OnPathDown(*Path, PathInterface)
 }
 
 // openScionPacketConn opens new raw SCION UDP conn.
@@ -75,7 +75,7 @@ func (c *scionUDPConn) SetWriteDeadline(t time.Time) error {
 	return c.raw.SetWriteDeadline(t)
 }
 
-func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path Path, b []byte) (int, error) {
+func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
 	pkt := &snet.Packet{
 		Bytes: c.writeBuffer,
 		PacketInfo: snet.PacketInfo{ // bah
@@ -87,7 +87,7 @@ func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path Path, b []byte) (int, err
 				IA:   dst.IA,
 				Host: addr.HostFromIP(dst.IP),
 			},
-			Path: path.Path(),
+			Path: path.ForwardingPath.spath,
 			Payload: snet.UDPPayload{
 				SrcPort: uint16(src.Port),
 				DstPort: uint16(dst.Port),
@@ -105,7 +105,7 @@ func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path Path, b []byte) (int, err
 	} else {
 		// XXX: could have global lookup table with ifID->UDP instead of passing this around.
 		// Might also allow to "properly" bind to wildcard (cache correct source address per ifID).
-		nextHop = path.UnderlayNextHop()
+		nextHop = path.ForwardingPath.underlay
 	}
 
 	c.writeMutex.Lock()
@@ -121,7 +121,7 @@ func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path Path, b []byte) (int, err
 // Internally invokes the configured SCMP handler.
 // Ignores non-UDP packets.
 // Returns
-func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, error) {
+func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 	c.readMutex.Lock()
 	defer c.readMutex.Unlock()
 	for {
@@ -131,7 +131,7 @@ func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, error) {
 		var lastHop net.UDPAddr
 		err := c.raw.ReadFrom(&pkt, &lastHop)
 		if err != nil {
-			return 0, UDPAddr{}, err
+			return 0, UDPAddr{}, ForwardingPath{}, err
 		}
 		udp, ok := pkt.Payload.(snet.UDPPayload)
 		if !ok {
@@ -142,8 +142,12 @@ func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, error) {
 			IP:   append(net.IP{}, pkt.Source.Host.IP()...),
 			Port: int(udp.SrcPort),
 		}
+		fw := ForwardingPath{
+			spath:    pkt.Path.Copy(),
+			underlay: &lastHop,
+		}
 		n := copy(b, udp.Payload)
-		return n, remote, nil
+		return n, remote, fw, nil
 	}
 }
 

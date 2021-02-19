@@ -24,6 +24,7 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	daemon "github.com/scionproto/scion/go/lib/sciond" // renamed upstream, daemon is new name
+	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/snet/addrutil"
 	"github.com/scionproto/scion/go/lib/sock/reliable"
 )
@@ -150,20 +151,58 @@ func defaultLocalIP() (net.IP, error) {
 	return addrutil.ResolveLocal(host().hostInLocalAS)
 }
 
-func defaultLocalAddr(local *net.UDPAddr) error {
+func defaultLocalAddr(local *net.UDPAddr) (*net.UDPAddr, error) {
 	if local == nil {
 		local = &net.UDPAddr{}
 	}
 	if local.IP == nil || local.IP.IsUnspecified() {
 		localIP, err := defaultLocalIP()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		local = &net.UDPAddr{IP: localIP, Port: local.Port, Zone: local.Zone}
+		local = &net.UDPAddr{IP: localIP, Port: local.Port}
 	}
-	return nil
+	return local, nil
 }
 
-func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]Path, error) {
-	return h.sciond.Paths(ctx, dst, IA{}, daemon.PathReqFlags{Refresh: false, Hidden: false})
+func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]*Path, error) {
+	snetPaths, err := h.sciond.Paths(ctx, dst, IA{}, daemon.PathReqFlags{Refresh: false, Hidden: false})
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]*Path, len(snetPaths))
+	for i, p := range snetPaths {
+		snetMetadata := p.Metadata()
+		metadata := &PathMetadata{
+			Interfaces:   convertPathInterfaceSlice(snetMetadata.Interfaces),
+			MTU:          snetMetadata.MTU,
+			Latency:      snetMetadata.Latency,
+			Bandwidth:    snetMetadata.Bandwidth,
+			Geo:          snetMetadata.Geo,
+			LinkType:     snetMetadata.LinkType,
+			InternalHops: snetMetadata.InternalHops,
+			Notes:        snetMetadata.Notes,
+		}
+		paths[i] = &Path{
+			Metadata:    metadata,
+			Fingerprint: pathSequenceFromInterfaces(metadata.Interfaces).Fingerprint(),
+			Expiry:      snetMetadata.Expiry,
+			ForwardingPath: ForwardingPath{
+				spath:    p.Path(),
+				underlay: p.UnderlayNextHop(),
+			},
+		}
+	}
+	return paths, nil
+}
+
+func convertPathInterfaceSlice(spis []snet.PathInterface) []PathInterface {
+	pis := make([]PathInterface, len(spis))
+	for i, spi := range spis {
+		pis[i] = PathInterface{
+			IA:   spi.IA,
+			IfID: IfID(spi.ID),
+		}
+	}
+	return pis
 }

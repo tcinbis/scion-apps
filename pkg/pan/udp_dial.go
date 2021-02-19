@@ -26,9 +26,9 @@ var errNoPath error = errors.New("no path")
 // Selector (or Router, Pather, Scheduler?) is owned by a single **connected** socket. Stateful.
 // The Path() function is invoked for every single packet.
 type Selector interface {
-	Path() (Path, error)
-	SetPaths([]Path)
-	OnPathDown(Path, PathInterface)
+	Path() (*Path, error)
+	SetPaths([]*Path)
+	OnPathDown(*Path, PathInterface)
 }
 
 // XXX: should policy be part of the selector? would generalize things a bit.
@@ -39,7 +39,7 @@ type Selector interface {
 // Perhaps expose the subscribe interface? ;/
 func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector) (net.Conn, error) {
 
-	err := defaultLocalAddr(local)
+	local, err := defaultLocalAddr(local)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (c *connectedConn) Write(b []byte) (int, error) {
 
 func (c *connectedConn) Read(b []byte) (int, error) {
 	for {
-		n, remote, err := c.scionUDPConn.readMsg(b)
+		n, remote, _, err := c.scionUDPConn.readMsg(b)
 		if err != nil {
 			return n, err
 		}
@@ -115,7 +115,7 @@ func (c *connectedConn) Close() error {
 
 // enterprise path setter
 type pathSetter interface {
-	SetPaths([]Path)
+	SetPaths([]*Path)
 }
 
 type policySubscriber struct {
@@ -147,11 +147,11 @@ func (s *policySubscriber) Close() error {
 	return nil
 }
 
-func (s *policySubscriber) refresh(dst IA, paths []Path) {
+func (s *policySubscriber) refresh(dst IA, paths []*Path) {
 	s.setFilteredPaths(paths)
 }
 
-func (s *policySubscriber) setFilteredPaths(paths []Path) {
+func (s *policySubscriber) setFilteredPaths(paths []*Path) {
 	if s.policy != nil {
 		paths = s.policy.Filter(paths, s.local, s.remote)
 	}
@@ -166,23 +166,23 @@ func (s *policySubscriber) setFilteredPaths(paths []Path) {
 var _ Selector = &DefaultSelector{}
 
 type DefaultSelector struct {
-	paths              []Path
+	paths              []*Path
 	current            int
 	currentFingerprint pathFingerprint
 }
 
-func (s *DefaultSelector) Path() (Path, error) {
+func (s *DefaultSelector) Path() (*Path, error) {
 	if len(s.paths) == 0 {
 		return nil, errNoPath
 	}
 	return s.paths[s.current], nil
 }
 
-func (s *DefaultSelector) SetPaths(paths []Path) {
+func (s *DefaultSelector) SetPaths(paths []*Path) {
 	curr := 0
 	if s.currentFingerprint != "" {
 		for i, p := range paths {
-			if fingerprint(p) == s.currentFingerprint {
+			if p.Fingerprint == s.currentFingerprint {
 				curr = i
 				break
 			}
@@ -191,12 +191,12 @@ func (s *DefaultSelector) SetPaths(paths []Path) {
 	s.paths = paths
 	s.current = curr
 	if len(s.paths) > 0 {
-		s.currentFingerprint = fingerprint(s.paths[s.current])
+		s.currentFingerprint = s.paths[s.current].Fingerprint
 	}
 }
 
-func (s *DefaultSelector) OnPathDown(path Path, pi PathInterface) {
-	if isInterfaceOnPath(s.paths[s.current], pi) || fingerprint(path) == s.currentFingerprint {
+func (s *DefaultSelector) OnPathDown(path *Path, pi PathInterface) {
+	if isInterfaceOnPath(s.paths[s.current], pi) || path.Fingerprint == s.currentFingerprint {
 		// XXX: this is a quite dumb; will forget about the down notifications immediately.
 		// XXX: this should be replaced with sending this to "Stats DB". Then the
 		// selector needs to be subscribed to the stats DB.
@@ -204,6 +204,6 @@ func (s *DefaultSelector) OnPathDown(path Path, pi PathInterface) {
 		// Try next path. Note that this will keep cycling through all paths if none are working.
 		s.current = (s.current + 1) % len(s.paths)
 		fmt.Println("failover:", s.current, len(s.paths))
-		s.currentFingerprint = fingerprint(s.paths[s.current])
+		s.currentFingerprint = s.paths[s.current].Fingerprint
 	}
 }
