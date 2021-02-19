@@ -30,6 +30,10 @@ const (
 	// pathExpiryPruneLeadTime specifies when, relative to its expiry, a path
 	// that is no longer returned from a path query is dropped from the cache.
 	pathExpiryPruneLeadTime = pathRefreshMinInterval
+
+	pathDownNotificationTimeout = 3 * time.Second
+
+	statsNumLatencySamples = 4
 )
 
 // maxTime is the maximum usable time value (https://stackoverflow.com/a/32620397)

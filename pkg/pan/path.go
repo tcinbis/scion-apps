@@ -49,7 +49,6 @@ func (p *Path) Copy() *Path {
 
 func (p *Path) String() string {
 	return p.Fingerprint
-
 }
 
 // XXX: copied from snet.PathMetadata: does not contain Expiry and uses the
@@ -115,8 +114,21 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 	}
 }
 
+type PathInterface struct {
+	IA   IA
+	IfID IfID
+}
 type GeoCoordinates = snet.GeoCoordinates
 type LinkType = snet.LinkType
+
+func isInterfaceOnPath(p *Path, pi PathInterface) bool {
+	for _, c := range p.Metadata.Interfaces {
+		if c == pi {
+			return true
+		}
+	}
+	return false
+}
 
 // ForwardingPath represents a data plane forwarding path.
 type ForwardingPath struct {

@@ -27,7 +27,9 @@ import (
 
 - never lookup paths during sending a packet
 - assumption: listener only ever replies. Seems like an ok restriction to make.
-  We could have proper unconnected conn by combining this with the Dial logic, but things get more complicated (is it worth keeping these paths up to date? etc...)
+	We could have "proper" unconnected conn, i.e. one that allows sending to
+	anyone, by combining this with the Dial logic, but things get more
+	complicated (is it worth keeping these paths up to date? etc...)
 - Observation:
 	- path oblivient upper layers cannot just keep using same path forever (snet/squic approach)
 	- a path aware application can use path-y API to explicitly reply without the reply path recording overhead
@@ -35,14 +37,14 @@ import (
 
 var errBadDstAddress error = errors.New("dst address not a UDPAddr")
 
-type ReplySelector interface {
+type UnconnectedSelector interface {
 	ReplyPath(src, dst UDPAddr) (*Path, error)
 	OnPacketReceived(src, dst UDPAddr, path *Path)
 	OnPathDown(*Path, PathInterface)
 }
 
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
-	selector ReplySelector) (net.PacketConn, error) {
+	selector UnconnectedSelector) (net.PacketConn, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -69,7 +71,7 @@ type unconnectedConn struct {
 	scionUDPConn
 
 	local    UDPAddr
-	selector ReplySelector
+	selector UnconnectedSelector
 }
 
 func (c *unconnectedConn) LocalAddr() net.Addr {
@@ -123,7 +125,7 @@ func (c *unconnectedConn) Close() error {
 	return c.scionUDPConn.Close()
 }
 
-var _ ReplySelector = &DefaultReplySelector{}
+var _ UnconnectedSelector = &DefaultReplySelector{}
 
 type udpAddrKey struct {
 	IA   IA

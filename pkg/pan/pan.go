@@ -77,18 +77,14 @@ package pan
 import (
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/snet"
 )
 
+// XXX: leaking addr
 type IA = addr.IA
 type IfID = uint64
-type PathInterface struct {
-	IA   IA
-	IfID IfID
-}
 
 // NOTE: does _NOT_ contain path
 type UDPAddr struct {
@@ -102,7 +98,15 @@ func (a UDPAddr) Network() string {
 }
 
 func (a UDPAddr) String() string {
-	return fmt.Sprintf("%s,%s:%d", a.IA, a.IP, a.Port) // XXX: use snet stuff?
+	// XXX: maybe we can start to experiment with different representations here.
+	// I like
+	//   isd-as-ipv4:port
+	//   [isd-as-ipv6]:port (who cares about zones anyway?)
+	if a.IP.To4() == nil {
+		return fmt.Sprintf("%s,[%s]:%d", a.IA, a.IP, a.Port) // XXX: use snet stuff?
+	} else {
+		return fmt.Sprintf("%s,%s:%d", a.IA, a.IP, a.Port) // XXX: use snet stuff?
+	}
 }
 
 func (a UDPAddr) Equal(x UDPAddr) bool {
@@ -121,30 +125,4 @@ func ParseUDPAddr(s string) (UDPAddr, error) {
 		IP:   addr.Host.IP,
 		Port: addr.Host.Port,
 	}, nil
-}
-
-func isInterfaceOnPath(p *Path, pi PathInterface) bool {
-	for _, c := range p.Metadata.Interfaces {
-		if c == pi {
-			return true
-		}
-	}
-	return false
-}
-
-type RecordedPathRouter struct {
-	paths map[string]*Path // map[UDPAddr]
-}
-
-func NewRecordedPathRouter(life time.Duration) *RecordedPathRouter {
-	return &RecordedPathRouter{}
-}
-
-func (p *RecordedPathRouter) Path(u UDPAddr) *Path {
-	return p.paths[""] // u
-}
-
-type Stats struct {
-	LatencyMeasurement time.Duration // TODO: keep multiple samples
-	IsNotifiedDown     bool
 }
