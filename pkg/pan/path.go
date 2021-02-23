@@ -130,6 +130,14 @@ func isInterfaceOnPath(p *Path, pi PathInterface) bool {
 	return false
 }
 
+// pathDestination returns the destination IA of a path.
+// XXX: only implemented for paths with metadata.
+// XXX: always available, make this a member of Path instead
+func pathDestination(p *Path) IA {
+	ifaces := p.Metadata.Interfaces
+	return ifaces[len(ifaces)-1].IA
+}
+
 // ForwardingPath represents a data plane forwarding path.
 type ForwardingPath struct {
 	spath    spath.Path
@@ -182,6 +190,9 @@ func (p ForwardingPath) forwardingPathInfo() (forwardingPathInfo, error) {
 // pathFromForwardingPath creates a Path including fingerprint and expiry information from
 // the dataplane forwarding path.
 func pathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, error) {
+	if fwPath.IsEmpty() {
+		return nil, nil
+	}
 	fpi, err := fwPath.forwardingPathInfo()
 	if err != nil {
 		return nil, err

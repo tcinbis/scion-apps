@@ -23,6 +23,7 @@ import (
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/slayers"
 	"github.com/scionproto/scion/go/lib/snet"
+	"github.com/scionproto/scion/go/lib/spath"
 	"github.com/scionproto/scion/go/lib/topology/underlay"
 )
 
@@ -76,6 +77,21 @@ func (c *scionUDPConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
+
+	var spath spath.Path
+	var nextHop *net.UDPAddr
+	if src.IA == dst.IA {
+		nextHop = &net.UDPAddr{
+			IP:   dst.IP,
+			Port: underlay.EndhostPort,
+		}
+	} else {
+		// XXX: could have global lookup table with ifID->UDP instead of passing this around.
+		// Might also allow to "properly" bind to wildcard (cache correct source address per ifID).
+		nextHop = path.ForwardingPath.underlay
+		spath = path.ForwardingPath.spath
+	}
+
 	pkt := &snet.Packet{
 		Bytes: c.writeBuffer,
 		PacketInfo: snet.PacketInfo{ // bah
@@ -87,25 +103,13 @@ func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, er
 				IA:   dst.IA,
 				Host: addr.HostFromIP(dst.IP),
 			},
-			Path: path.ForwardingPath.spath,
+			Path: spath,
 			Payload: snet.UDPPayload{
 				SrcPort: uint16(src.Port),
 				DstPort: uint16(dst.Port),
 				Payload: b,
 			},
 		},
-	}
-
-	var nextHop *net.UDPAddr
-	if src.IA == dst.IA {
-		nextHop = &net.UDPAddr{
-			IP:   dst.IP,
-			Port: underlay.EndhostPort,
-		}
-	} else {
-		// XXX: could have global lookup table with ifID->UDP instead of passing this around.
-		// Might also allow to "properly" bind to wildcard (cache correct source address per ifID).
-		nextHop = path.ForwardingPath.underlay
 	}
 
 	c.writeMutex.Lock()

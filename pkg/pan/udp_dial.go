@@ -19,25 +19,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 )
 
 var errNoPath error = errors.New("no path")
 
-// Selector (or Router, Pather, Scheduler?) is owned by a single **connected** socket. Stateful.
-// The Path() function is invoked for every single packet.
-type Selector interface {
-	Path() (*Path, error)
-	SetPaths([]*Path)
-	OnPathDown(*Path, PathInterface)
-}
-
-// XXX: should policy be part of the selector? would generalize things a bit.
-// Mostly the same thing, just move the policy evaluation into SetPaths. But
-// it's a bit awkward because of the local/remote addresses inputs to the
-// policy...
-// It would make "SetPolicy" a bit easier though..
-// Perhaps expose the subscribe interface? ;/
-func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector) (net.Conn, error) {
+func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, selector Selector) (net.Conn, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -53,9 +40,12 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Pol
 		return nil, err
 	}
 	// XXX: dont do this for dst in local IA!
-	subscriber, err := openPolicySubscriber(ctx, policy, slocal, remote, selector)
-	if err != nil {
-		return nil, err
+	var subscriber *pathRefreshSubscriber
+	if remote.IA != slocal.IA {
+		subscriber, err = openPathRefreshSubscriber(ctx, remote, selector)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &connectedConn{
 		scionUDPConn: scionUDPConn{
@@ -64,7 +54,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Pol
 		local:      slocal,
 		remote:     remote,
 		subscriber: subscriber,
-		selector:   selector,
+		Selector:   selector,
 	}, nil
 }
 
@@ -73,8 +63,8 @@ type connectedConn struct {
 
 	local      UDPAddr
 	remote     UDPAddr
-	subscriber *policySubscriber
-	selector   Selector
+	subscriber *pathRefreshSubscriber
+	Selector   Selector
 }
 
 func (c *connectedConn) LocalAddr() net.Addr {
@@ -86,9 +76,13 @@ func (c *connectedConn) RemoteAddr() net.Addr {
 }
 
 func (c *connectedConn) Write(b []byte) (int, error) {
-	path, err := c.selector.Path()
-	if err != nil {
-		return 0, err
+	var path *Path
+	if c.local.IA != c.remote.IA {
+		var err error
+		path, err = c.Selector.Path()
+		if err != nil {
+			return 0, err
+		}
 	}
 	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
 }
@@ -118,77 +112,94 @@ type pathSetter interface {
 	SetPaths([]*Path)
 }
 
-type policySubscriber struct {
+type pathRefreshSubscriber struct {
 	policy Policy
-	local  UDPAddr
 	remote UDPAddr
 	target pathSetter
 }
 
-func openPolicySubscriber(ctx context.Context, policy Policy, local, remote UDPAddr, target pathSetter) (*policySubscriber, error) {
-	s := &policySubscriber{
-		policy: policy,
-		local:  local,
-		remote: remote,
+func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, target pathSetter) (*pathRefreshSubscriber, error) {
+	s := &pathRefreshSubscriber{
 		target: target,
+		remote: remote,
 	}
 	paths, err := pool.subscribe(ctx, remote.IA, s)
 	if err != nil {
 		return nil, nil
 	}
-	s.setFilteredPaths(paths)
+	s.target.SetPaths(paths)
 	return s, nil
 }
 
-func (s *policySubscriber) Close() error {
+func (s *pathRefreshSubscriber) Close() error {
 	if s != nil {
 		pool.unsubscribe(s.remote.IA, s)
 	}
 	return nil
 }
 
-func (s *policySubscriber) refresh(dst IA, paths []*Path) {
-	s.setFilteredPaths(paths)
-}
-
-func (s *policySubscriber) setFilteredPaths(paths []*Path) {
-	if s.policy != nil {
-		paths = s.policy.Filter(paths, s.local, s.remote)
-	}
-	for _, p := range paths {
-		fmt.Println(p)
-	}
+func (s *pathRefreshSubscriber) refresh(dst IA, paths []*Path) {
 	s.target.SetPaths(paths)
 }
 
 //////////////////// selector
 
-var _ Selector = &DefaultSelector{}
+// Selector controls the path used by a single **connected** socket. Stateful.
+// The Path() function is invoked for every single packet.
+type Selector interface {
+	Path() (*Path, error)
+	SetPaths([]*Path)
+	OnPathDown(*Path, PathInterface)
+}
 
 type DefaultSelector struct {
+	Policy             Policy
+	mutex              sync.Mutex
+	unfiltered         []*Path
 	paths              []*Path
 	current            int
 	currentFingerprint pathFingerprint
 }
 
 func (s *DefaultSelector) Path() (*Path, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	if len(s.paths) == 0 {
 		return nil, errNoPath
 	}
 	return s.paths[s.current], nil
 }
 
+func (s *DefaultSelector) SetPolicy(policy Policy) {
+	s.mutex.Lock()
+	s.Policy = policy
+	s.mutex.Unlock()
+	if s.unfiltered != nil {
+		s.SetPaths(s.unfiltered)
+	}
+}
+
 func (s *DefaultSelector) SetPaths(paths []*Path) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.unfiltered = paths
+	if s.Policy != nil {
+		s.paths = s.Policy.Filter(paths)
+	} else {
+		s.paths = s.unfiltered
+	}
+
 	curr := 0
 	if s.currentFingerprint != "" {
-		for i, p := range paths {
+		for i, p := range s.paths {
 			if p.Fingerprint == s.currentFingerprint {
 				curr = i
 				break
 			}
 		}
 	}
-	s.paths = paths
 	s.current = curr
 	if len(s.paths) > 0 {
 		s.currentFingerprint = s.paths[s.current].Fingerprint
@@ -196,6 +207,9 @@ func (s *DefaultSelector) SetPaths(paths []*Path) {
 }
 
 func (s *DefaultSelector) OnPathDown(path *Path, pi PathInterface) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	if isInterfaceOnPath(s.paths[s.current], pi) || path.Fingerprint == s.currentFingerprint {
 		// XXX: this is a quite dumb; will forget about the down notifications immediately.
 		// XXX: this should be replaced with sending this to "Stats DB". Then the

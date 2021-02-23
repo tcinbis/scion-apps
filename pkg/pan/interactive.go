@@ -38,21 +38,22 @@ type InteractiveSelection struct {
 	choices  map[IA][]pathFingerprint
 }
 
-func (p *InteractiveSelection) Filter(paths []*Path, local, remote UDPAddr) []*Path {
-	choice, ok := p.choices[remote.IA]
+func (p *InteractiveSelection) Filter(paths []*Path) []*Path {
+	dstIA := pathDestination(paths[0])
+	choice, ok := p.choices[dstIA]
 	if !ok {
-		chosenPaths := p.Prompter.Prompt(paths, remote.IA)
+		chosenPaths := p.Prompter.Prompt(paths, dstIA)
 		choice = pathFingerprints(chosenPaths)
 		if p.choices == nil {
 			p.choices = make(map[IA][]pathFingerprint)
 		}
-		p.choices[remote.IA] = choice
+		p.choices[dstIA] = choice
 	}
 	if p.Type == InteractiveSelectionTypePinned {
-		return Pinned{choice}.Filter(paths, local, remote)
+		return Pinned{choice}.Filter(paths)
 	} else {
 		fmt.Println("preferred", choice)
-		return Preferred{choice}.Filter(paths, local, remote)
+		return Preferred{choice}.Filter(paths)
 	}
 }
 

@@ -33,8 +33,9 @@ import (
 // RoundTripper implements the RoundTripper interface. It wraps a
 // http3.RoundTripper to make connections over SCION.
 type RoundTripper struct {
-	Policy pan.Policy
-	rt     *http3.RoundTripper
+	rt        *http3.RoundTripper
+	policy    pan.Policy
+	selectors []*pan.DefaultSelector
 }
 
 // dialFunc is the function type supported in http3.RoundTripper.Dial
@@ -43,13 +44,15 @@ type dialFunc = func(network, address string, tlsCfg *tls.Config, cfg *quic.Conf
 // NewRoundTripper creates a new RoundTripper that can be used as the Transport
 // of an http.Client.
 func NewRoundTripper(policy pan.Policy, tlsClientCfg *tls.Config, quicCfg *quic.Config) *RoundTripper {
-	return &RoundTripper{
+	t := &RoundTripper{
 		rt: &http3.RoundTripper{
-			Dial:            dialer(policy),
 			QuicConfig:      quicCfg,
 			TLSClientConfig: tlsClientCfg,
 		},
+		policy: policy,
 	}
+	t.rt.Dial = t.dialer()
+	return t
 }
 
 // RoundTrip does a single round trip; retrieving a response for a given request
@@ -78,8 +81,9 @@ func (t *RoundTripper) Close() (err error) {
 	return err
 }
 
-// dialer creates a `Dial` function to be used in http3.RoundTrip.Dial, capturing the policy/selector.
-func dialer(policy pan.Policy) dialFunc {
+// dialer creates a `Dial` function to be used in http3.RoundTrip.Dial,
+// capturing the *RoundTripper.
+func (t *RoundTripper) dialer() dialFunc {
 	// dial is the Dial function used in RoundTripper
 	return func(network, address string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
 		hostname := address
@@ -93,9 +97,18 @@ func dialer(policy pan.Policy) dialFunc {
 		if err != nil {
 			panic("parse error after already parsing successfully once, should not happen")
 		}
+		selector := &pan.DefaultSelector{Policy: t.policy}
+		t.selectors = append(t.selectors, selector)
 		return pan.DialQUICEarly(context.Background(),
-			nil, addr, policy, nil,
+			nil, addr, selector,
 			hostname, tlsCfg, cfg)
+	}
+}
+
+func (t *RoundTripper) SetPolicy(policy pan.Policy) {
+	t.policy = policy
+	for _, s := range t.selectors {
+		s.SetPolicy(policy)
 	}
 }
 

@@ -39,11 +39,10 @@ func main() {
 	}
 
 	policy := pan.PolicyChain{
-		pan.PolicyFunc(func(paths []*pan.Path, local, remote pan.UDPAddr) []*pan.Path {
+		pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
 			return paths[:3]
 		}),
 		&pan.InteractiveSelection{
-			Type:     pan.InteractiveSelectionTypePreferred,
 			Prompter: pan.CommandlinePrompter{},
 		},
 	}
@@ -67,6 +66,13 @@ func main() {
 	log.Printf("\nGET request succeeded in %v seconds", end.Sub(start).Seconds())
 	printResponse(resp)
 
+	// Set Policy: stupid example just to show that it works, re-initialize the
+	// interactive selection so it will prompt again, just to show that it works:
+	c.Transport.(*shttp.RoundTripper).SetPolicy(
+		&pan.InteractiveSelection{
+			Prompter: pan.CommandlinePrompter{},
+		},
+	)
 	start = time.Now()
 	query = fmt.Sprintf("https://%s/form", *serverAddrStr)
 	resp, err = c.Post(

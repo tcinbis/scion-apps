@@ -79,7 +79,6 @@ func (c *unconnectedConn) LocalAddr() net.Addr {
 
 func (c *unconnectedConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, remote, path, err := c.ReadFromPath(b)
-	//fmt.Println(n, remote, path, err)
 	c.selector.OnPacketReceived(remote, c.local, path)
 	return n, remote, err
 }
@@ -148,6 +147,9 @@ func NewDefaultReplySelector() *DefaultReplySelector {
 }
 
 func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) (*Path, error) {
+	if src.IA == dst.IA {
+		return nil, nil
+	}
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	paths, ok := s.replyPath[makeKey(dst)]
@@ -165,8 +167,13 @@ func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) (*Path, error) {
 }
 
 func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
+	if path == nil {
+		return
+	}
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	ksrc := makeKey(src)
 	paths := s.replyPath[ksrc]
 	for _, e := range paths {

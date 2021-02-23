@@ -107,7 +107,7 @@ func runClient(address string) error {
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"foo"},
 	}
-	session, err := pan.DialQUIC(context.Background(), nil, addr, nil, nil, "", tlsCfg, nil)
+	session, err := pan.DialQUIC(context.Background(), nil, addr, nil, "", tlsCfg, nil)
 	if err != nil {
 		return err
 	}

@@ -74,10 +74,10 @@ func (c connectedPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 // The host parameter is used for SNI.
 // The tls.Config must define an application protocol (using NextProtos).
 func DialQUIC(ctx context.Context,
-	local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector,
+	local *net.UDPAddr, remote UDPAddr, selector Selector,
 	host string, tlsConf *tls.Config, quicConf *quic.Config) (quic.Session, error) {
 
-	conn, err := DialUDP(ctx, local, remote, policy, selector)
+	conn, err := DialUDP(ctx, local, remote, selector)
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +92,10 @@ func DialQUIC(ctx context.Context,
 
 // DialAddrEarly establishes a new 0-RTT QUIC connection to a server. Analogous to DialAddr.
 func DialQUICEarly(ctx context.Context,
-	local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector,
+	local *net.UDPAddr, remote UDPAddr, selector Selector,
 	host string, tlsConf *tls.Config, quicConf *quic.Config) (quic.EarlySession, error) {
 
-	conn, err := DialUDP(ctx, local, remote, policy, selector)
+	conn, err := DialUDP(ctx, local, remote, selector)
 	if err != nil {
 		return nil, err
 	}

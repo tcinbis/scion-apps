@@ -17,21 +17,21 @@ package pan
 // Policy is a stateless filter / sorter for paths.
 type Policy interface {
 	// Filter and prioritize paths
-	Filter(paths []*Path, local, remote UDPAddr) []*Path
+	Filter(paths []*Path) []*Path
 }
 
-type PolicyFunc func(paths []*Path, local, remote UDPAddr) []*Path
+type PolicyFunc func(paths []*Path) []*Path
 
-func (f PolicyFunc) Filter(paths []*Path, local, remote UDPAddr) []*Path {
-	return f(paths, local, remote)
+func (f PolicyFunc) Filter(paths []*Path) []*Path {
+	return f(paths)
 }
 
 // PolicyChain applies multiple policies in order.
 type PolicyChain []Policy
 
-func (p PolicyChain) Filter(paths []*Path, src, dst UDPAddr) []*Path {
+func (p PolicyChain) Filter(paths []*Path) []*Path {
 	for _, p := range p {
-		paths = p.Filter(paths, src, dst)
+		paths = p.Filter(paths)
 	}
 	return paths
 }
@@ -48,7 +48,7 @@ type Pinned struct {
 	sequence []pathFingerprint
 }
 
-func (p Pinned) Filter(paths []*Path, src, dst UDPAddr) []*Path {
+func (p Pinned) Filter(paths []*Path) []*Path {
 	filtered := make([]*Path, 0, len(p.sequence))
 	for _, s := range p.sequence {
 		for _, path := range paths {
@@ -67,7 +67,7 @@ type Preferred struct {
 	sequence []pathFingerprint
 }
 
-func (p Preferred) Filter(paths []*Path, src, dst UDPAddr) []*Path {
+func (p Preferred) Filter(paths []*Path) []*Path {
 	filtered := make([]*Path, 0, len(paths))
 	for _, s := range p.sequence {
 		for _, path := range paths {
