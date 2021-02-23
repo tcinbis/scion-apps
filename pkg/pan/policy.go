@@ -20,13 +20,17 @@ type Policy interface {
 	Filter(paths []*Path, local, remote UDPAddr) []*Path
 }
 
-// PolicyChain applies multiple policies in order.
-type PolicyChain struct {
-	Policies []Policy
+type PolicyFunc func(paths []*Path, local, remote UDPAddr) []*Path
+
+func (f PolicyFunc) Filter(paths []*Path, local, remote UDPAddr) []*Path {
+	return f(paths, local, remote)
 }
 
-func (p *PolicyChain) Filter(paths []*Path, src, dst UDPAddr) []*Path {
-	for _, p := range p.Policies {
+// PolicyChain applies multiple policies in order.
+type PolicyChain []Policy
+
+func (p PolicyChain) Filter(paths []*Path, src, dst UDPAddr) []*Path {
+	for _, p := range p {
 		paths = p.Filter(paths, src, dst)
 	}
 	return paths
@@ -44,12 +48,12 @@ type Pinned struct {
 	sequence []pathFingerprint
 }
 
-func (p *Pinned) Filter(paths []*Path, src, dst UDPAddr) []*Path {
+func (p Pinned) Filter(paths []*Path, src, dst UDPAddr) []*Path {
 	filtered := make([]*Path, 0, len(p.sequence))
 	for _, s := range p.sequence {
-		for _, p := range paths {
-			if p.Fingerprint == s {
-				filtered = append(filtered, p)
+		for _, path := range paths {
+			if path.Fingerprint == s {
+				filtered = append(filtered, path)
 				break
 			}
 		}
@@ -63,14 +67,26 @@ type Preferred struct {
 	sequence []pathFingerprint
 }
 
-func (p *Preferred) Filter(paths []*Path, src, dst UDPAddr) []*Path {
-	filtered := make([]*Path, 0, len(p.sequence))
+func (p Preferred) Filter(paths []*Path, src, dst UDPAddr) []*Path {
+	filtered := make([]*Path, 0, len(paths))
 	for _, s := range p.sequence {
-		for _, p := range paths {
-			if p.Fingerprint == s {
-				filtered = append(filtered, p)
+		for _, path := range paths {
+			if path.Fingerprint == s {
+				filtered = append(filtered, path)
 				break
 			}
+		}
+	}
+	for _, path := range paths {
+		add := true
+		for _, s := range p.sequence {
+			if path.Fingerprint == s {
+				add = false
+				break
+			}
+		}
+		if add {
+			filtered = append(filtered, path)
 		}
 	}
 	return filtered

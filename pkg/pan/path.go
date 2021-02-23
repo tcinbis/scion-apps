@@ -179,6 +179,25 @@ func (p ForwardingPath) forwardingPathInfo() (forwardingPathInfo, error) {
 	}
 }
 
+// pathFromForwardingPath creates a Path including fingerprint and expiry information from
+// the dataplane forwarding path.
+func pathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, error) {
+	fpi, err := fwPath.forwardingPathInfo()
+	if err != nil {
+		return nil, err
+	}
+	fingerprint := pathSequence{
+		Source:       src,
+		Destination:  dst,
+		InterfaceIDs: fpi.interfaceIDs,
+	}.Fingerprint()
+	return &Path{
+		ForwardingPath: fwPath,
+		Expiry:         fpi.expiry,
+		Fingerprint:    fingerprint,
+	}, nil
+}
+
 // forwardingPathInfo contains information extracted from a dataplane forwardng path.
 type forwardingPathInfo struct {
 	expiry       time.Time
@@ -280,3 +299,11 @@ func (s pathSequence) Fingerprint() pathFingerprint {
 
 // XXX: rename. "pathSequenceKey"?
 type pathFingerprint = string
+
+func pathFingerprints(paths []*Path) []pathFingerprint {
+	fingerprints := make([]pathFingerprint, len(paths))
+	for i, p := range paths {
+		fingerprints[i] = p.Fingerprint
+	}
+	return fingerprints
+}

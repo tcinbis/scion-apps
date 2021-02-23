@@ -161,6 +161,10 @@ type pathDownSCMPHandler struct {
 
 func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 	scmp := pkt.Payload.(snet.SCMPPayload)
+	path, err := pathFromForwardingPath(pkt.Destination.IA, pkt.Source.IA, ForwardingPath{spath: pkt.Path})
+	if err != nil {
+		return err
+	}
 	switch scmp.Type() {
 	case slayers.SCMPTypeExternalInterfaceDown:
 		msg := pkt.Payload.(snet.SCMPExternalInterfaceDown)
@@ -168,7 +172,7 @@ func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 			IA:   msg.IA,
 			IfID: msg.Interface,
 		}
-		h.pathDownHandler.OnPathDown(nil, pi) // XXX: forwarding path!!
+		h.pathDownHandler.OnPathDown(path, pi) // XXX: forwarding path!!
 		return nil
 	case slayers.SCMPTypeInternalConnectivityDown:
 		msg := pkt.Payload.(snet.SCMPInternalConnectivityDown)
@@ -176,7 +180,7 @@ func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 			IA:   msg.IA,
 			IfID: msg.Egress,
 		}
-		h.pathDownHandler.OnPathDown(nil, pi) // XXX: forwarding path!!
+		h.pathDownHandler.OnPathDown(path, pi) // XXX: forwarding path!!
 		return nil
 	default:
 		// TODO: OpError for other SCMPs!

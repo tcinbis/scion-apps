@@ -17,7 +17,6 @@ package pan
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -80,7 +79,7 @@ func (c *unconnectedConn) LocalAddr() net.Addr {
 
 func (c *unconnectedConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, remote, path, err := c.ReadFromPath(b)
-	fmt.Println(n, remote, path, err)
+	//fmt.Println(n, remote, path, err)
 	c.selector.OnPacketReceived(remote, c.local, path)
 	return n, remote, err
 }
@@ -95,17 +94,7 @@ func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	if err != nil {
 		return n, UDPAddr{}, nil, err
 	}
-	fpi, err := fwPath.forwardingPathInfo()
-	fingerprint := pathSequence{
-		Source:       c.local.IA,
-		Destination:  remote.IA,
-		InterfaceIDs: fpi.interfaceIDs,
-	}.Fingerprint()
-	path := &Path{
-		ForwardingPath: fwPath,
-		Expiry:         fpi.expiry,
-		Fingerprint:    fingerprint,
-	}
+	path, err := pathFromForwardingPath(c.local.IA, remote.IA, fwPath)
 	return n, remote, path, err
 }
 
