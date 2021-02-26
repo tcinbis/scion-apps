@@ -78,7 +78,7 @@ func (p CommandlinePrompter) Prompt(paths []*Path, remote IA) []*Path {
 
 	fmt.Printf("Paths to %v\n", remote)
 	for i, path := range paths {
-		fmt.Printf("[%2d] %s\n", i, fmt.Sprintf("%s", path))
+		fmt.Printf("[%2d] %s\n", i, path)
 	}
 
 	var pathIndices []int

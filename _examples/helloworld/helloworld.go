@@ -74,7 +74,7 @@ func runClient(address string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pan.DialUDP(context.Background(), nil, addr, nil, nil)
+	conn, err := pan.DialUDP(context.Background(), nil, addr, nil)
 	if err != nil {
 		return err
 	}

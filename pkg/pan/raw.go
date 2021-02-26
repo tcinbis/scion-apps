@@ -54,6 +54,7 @@ func openScionPacketConn(ctx context.Context, local *net.UDPAddr,
 	return conn, slocal, nil
 }
 
+// XXX: rename to baseUDPConn?
 // scionUDPConn contains the shared read and write code for different connection interfaces.
 // Currently this just wraps snet.SCIONPacketConn.
 type scionUDPConn struct {

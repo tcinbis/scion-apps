@@ -17,6 +17,7 @@ package shttp
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 
@@ -73,6 +74,8 @@ func (srv *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
+	defer sconn.Close()
+	fmt.Println(sconn.LocalAddr())
 	return srv.Serve(sconn)
 }
 

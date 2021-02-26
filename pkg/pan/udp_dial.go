@@ -22,6 +22,7 @@ import (
 	"sync"
 )
 
+// XXX: export errors, also generally revisit error wrapping/handling
 var errNoPath error = errors.New("no path")
 
 func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, selector Selector) (net.Conn, error) {
@@ -58,6 +59,8 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, selector S
 	}, nil
 }
 
+// XXX: connectedConn, _great_ name :/
+// XXX: export (to add extended API)?
 type connectedConn struct {
 	scionUDPConn
 

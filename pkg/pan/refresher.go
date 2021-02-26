@@ -140,7 +140,7 @@ func (r *refresher) nextRefresh(prevRefresh time.Time) time.Time {
 	nextRefresh := prevRefresh.Add(pathRefreshInterval)
 
 	expiry := r.earliestPathExpiry()
-	randOffset := time.Duration(rand.Intn(10)) * time.Second // avoid everbody refreshing simultaniously
+	randOffset := time.Duration(rand.Intn(10)) * time.Second // avoid everbody refreshing simultaneously
 	expiryRefresh := expiry.Add(-pathExpiryRefreshLeadTime + randOffset)
 
 	if expiryRefresh.Before(nextRefresh) {

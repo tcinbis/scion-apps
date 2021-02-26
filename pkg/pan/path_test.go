@@ -30,8 +30,11 @@ func TestInterfacesFromDecoded(t *testing.T) {
 		"\x03\x04\x05\x06")
 
 	sp := scion.Decoded{}
-	sp.DecodeFromBytes(rawPath)
-	ifaces := interfacesFromDecoded(sp)
+	err := sp.DecodeFromBytes(rawPath)
+	if err != nil {
+		panic(err)
+	}
+	ifaces := interfaceIDsFromDecoded(sp)
 	fmt.Println(ifaces)
 	expected := []IfID{1, 2, 2, 1}
 	assert.Equal(t, ifaces, expected)
