@@ -28,8 +28,8 @@ Introduction
 Path UDP, PUDP, (pronnounced pooh-the-pee, for shits and giggles), is an
 EXPERIMENTAL datagram protocol with an explicit path control mechanisms.
 The main/basic features are
-	* path racing (find the lowest latency path and use it)
-	* active path probing to optimise latency and detect faults quickly
+  - path racing (find the lowest latency path and use it)
+  - active path probing to optimise latency and detect faults quickly
 
 The main use case for this is to build a single-path-but-path-optimising QUIC
 on top of this, but it can also be used adopted for raw datagram usecases.
@@ -60,11 +60,11 @@ PUDP message: <command>* <payload>?
                   Receiver keeps N last used sequence numbers.
                   If sequence number is in the list, *drop* this duplicate packet.
                   If sequence number is not in the list:
-										Insert sequence number to list, replacing the lowest entry,
-										if this lowest entry is smaller than the new sequence
-										number.
-										If sequence number is larger than all previously seen, the
-										receiver should use this path as the return path.
+                    Insert sequence number to list, replacing the lowest entry,
+                    if this lowest entry is smaller than the new sequence
+                    number.
+                    If sequence number is larger than all previously seen, the
+                    receiver should use this path as the return path.
 
      - ping:      0x10, <sequence number>.
                   Reply immediately with pong, <sequence number>.
@@ -72,21 +72,21 @@ PUDP message: <command>* <payload>?
                   Record latency (if this is an expected response)
 
      - identify:  0x20
-		 - me:				0x21, <interface list>
-									Reply to a `identify`. To indicate that this is an instance
-									of an anycasted service where different AS interfaces may
-									lead to different instances. List of interfaces that will
-									reach this instance.
-									Interface list is empty if all interfaces may lead to this
-									instance.
+     - me:        0x21, <interface list>
+                  Reply to a `identify`. To indicate that this is an instance
+                  of an anycasted service where different AS interfaces may
+                  lead to different instances. List of interfaces that will
+                  reach this instance.
+                  Interface list is empty if all interfaces may lead to this
+                  instance.
 
-     - prefer:		0x22, <path desc>
-									Tell the other side that the matching paths are splendid.
-									TODO
+     - prefer:    0x22, <path desc>
+                  Tell the other side that the matching paths are splendid.
+                  TODO
 
-     - avoid:			0x23, <path desc>
-									Tell the other side that the matching paths are meh.
-									TODO
+     - avoid:     0x23, <path desc>
+                  Tell the other side that the matching paths are meh.
+                  TODO
 
   - interface list: 1-byte length N, N times 2-byte interface IDs
 
