@@ -114,6 +114,42 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 	}
 }
 
+// LowerLatency compares the latency of two paths.
+// Returns
+//  - true, true if a has strictly lower latency than b
+//  - false, true if a has equal or higher latency than b
+//  - _, false if not enough information is available to compare a and b
+func (a *PathMetadata) LowerLatency(b *PathMetadata) (bool, bool) {
+	totA, unknownA := a.latencySum()
+	totB, unknownB := b.latencySum()
+	if totA < totB && unknownA.subsetOf(unknownB) {
+		// total of known smaller and all unknown hops in A are also in B
+		return true, true
+	} else if totA >= totB && unknownB.subsetOf(unknownA) {
+		// total of known larger/equal all unknown hops in B are also in A
+		return false, true
+	}
+	return false, false
+}
+
+// latencySum returns the total latency and the set of edges with unknown
+// latency
+// XXX: the latency from the end hosts to the first/last interface is always
+// unknown. If that is taken into account, all the paths become incomparable.
+func (pm *PathMetadata) latencySum() (time.Duration, pathHopSet) {
+	var sum time.Duration
+	unknown := make(pathHopSet)
+	for i := 0; i < len(pm.Interfaces)-1; i++ {
+		l := pm.Latency[i]
+		if l != 0 { // XXX: needs to be fixed in combinator/snet; should not use 0 for unknown
+			sum += l
+		} else {
+			unknown[pathHop{a: pm.Interfaces[i], b: pm.Interfaces[i+1]}] = struct{}{}
+		}
+	}
+	return sum, unknown
+}
+
 type PathInterface struct {
 	IA   IA
 	IfID IfID
@@ -121,6 +157,20 @@ type PathInterface struct {
 type GeoCoordinates = snet.GeoCoordinates
 type LinkType = snet.LinkType
 
+type pathHop struct {
+	a, b PathInterface
+}
+
+type pathHopSet map[pathHop]struct{}
+
+func (a pathHopSet) subsetOf(b pathHopSet) bool {
+	for x := range a {
+		if _, inB := b[x]; !inB {
+			return false
+		}
+	}
+	return true
+}
 func isInterfaceOnPath(p *Path, pi PathInterface) bool {
 	for _, c := range p.Metadata.Interfaces {
 		if c == pi {

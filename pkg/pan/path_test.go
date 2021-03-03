@@ -15,8 +15,8 @@
 package pan
 
 import (
-	"fmt"
 	"testing"
+	"time"
 
 	"github.com/scionproto/scion/go/lib/slayers/path/scion"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +35,163 @@ func TestInterfacesFromDecoded(t *testing.T) {
 		panic(err)
 	}
 	ifaces := interfaceIDsFromDecoded(sp)
-	fmt.Println(ifaces)
 	expected := []IfID{1, 2, 2, 1}
 	assert.Equal(t, ifaces, expected)
+}
+
+func TestLowerLatency(t *testing.T) {
+
+	unknown := time.Duration(0)
+
+	asA := IA{I: 1, A: 1}
+	asB := IA{I: 1, A: 2}
+	asC := IA{I: 1, A: 3}
+
+	ifA1 := PathInterface{IA: asA, IfID: 1}
+	ifB1 := PathInterface{IA: asB, IfID: 1}
+	ifB2 := PathInterface{IA: asB, IfID: 2}
+	ifC2 := PathInterface{IA: asC, IfID: 2}
+	ifA3 := PathInterface{IA: asA, IfID: 3}
+	ifC3 := PathInterface{IA: asC, IfID: 3}
+	ifB4 := PathInterface{IA: asB, IfID: 4}
+	ifC4 := PathInterface{IA: asC, IfID: 4}
+
+	ifseqAC := []PathInterface{ifA3, ifC3}
+	ifseqABC := []PathInterface{ifA1, ifB1, ifB2, ifC2}
+	ifseqAB4C := []PathInterface{ifA1, ifB1, ifB4, ifC4}
+
+	cases := []struct {
+		name            string
+		a, b            PathMetadata
+		less, ok, equal bool // expected result
+	}{
+		{
+			name:  "empty, equal",
+			less:  false,
+			ok:    true,
+			equal: true,
+		},
+		{
+			name: "all known, less",
+			less: true,
+			ok:   true,
+			a: PathMetadata{
+				Interfaces: ifseqAC,
+				Latency:    []time.Duration{1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{1, 1, 1},
+			},
+		},
+		{
+			name:  "all known, equal",
+			less:  false,
+			ok:    true,
+			equal: true,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{1, 1, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAC,
+				Latency:    []time.Duration{3},
+			},
+		},
+		{
+			name: "all known vs all unknown",
+			ok:   false,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{1, 1, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAC,
+				Latency:    []time.Duration{unknown},
+			},
+		},
+		{
+			name: "some unknowns, can only be more",
+			less: false,
+			ok:   true,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{1, unknown, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAC,
+				Latency:    []time.Duration{1},
+			},
+		},
+		{
+			name: "same unknowns, less",
+			less: true,
+			ok:   true,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{unknown, 1, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAB4C,
+				Latency:    []time.Duration{unknown, 1, 2},
+			},
+		},
+		{
+			name:  "same unknowns, equal",
+			less:  false,
+			ok:    true,
+			equal: true,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{unknown, 1, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAB4C,
+				Latency:    []time.Duration{unknown, 1, 1},
+			},
+		},
+		{
+			name: "fewer unknowns, less",
+			less: true,
+			ok:   true,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{unknown, 1, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAB4C,
+				Latency:    []time.Duration{unknown, unknown, 3},
+			},
+		},
+		{
+			name: "unknown unknowns",
+			ok:   false,
+			a: PathMetadata{
+				Interfaces: ifseqABC,
+				Latency:    []time.Duration{unknown, unknown, 1},
+			},
+			b: PathMetadata{
+				Interfaces: ifseqAB4C,
+				Latency:    []time.Duration{unknown, unknown, 3},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			less, ok := c.a.LowerLatency(&c.b)
+			type result struct {
+				less, ok bool
+			}
+			assert.Equal(t, result{c.less, c.ok}, result{less: less, ok: ok})
+
+			// check reverse;
+			expectedReverseLess := !c.less
+			if !c.ok || c.equal {
+				expectedReverseLess = false
+			}
+			rLess, rOk := c.b.LowerLatency(&c.a)
+			assert.Equal(t, result{expectedReverseLess, c.ok}, result{rLess, rOk})
+		})
+	}
+
 }

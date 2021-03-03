@@ -38,8 +38,6 @@ func (p PolicyChain) Filter(paths []*Path) []*Path {
 
 // TODO:
 // - filter by beaconing metadata (latency, bandwidth, geo, MTU, ...)
-// - order by beaconing metadata.
-//   Partial order as information may be incomplete and not comparable -- pick stable order.
 // - policy language (yaml or whatever)
 
 // Pinned is a policy that keeps only a preselected set of paths.
@@ -61,8 +59,9 @@ func (p Pinned) Filter(paths []*Path) []*Path {
 	return filtered
 }
 
-// Preferred is a policy that keeps all paths but moves a few preselected paths to the top.
-// This can be used to implement interactive path preference with failover to other paths.
+// Preferred is a policy that keeps all paths but moves a few preselected paths
+// to the top.  This can be used to implement interactive path preference with
+// failover to other paths.
 type Preferred struct {
 	sequence []pathFingerprint
 }
@@ -90,4 +89,42 @@ func (p Preferred) Filter(paths []*Path) []*Path {
 		}
 	}
 	return filtered
+}
+
+// TODO: (optionally) fill missing latency info with geo coordinates
+// TODO: same for Bandwidth, etc.
+type LowestLatency struct{}
+
+func (p LowestLatency) Filter(paths []*Path) []*Path {
+	sortStablePartialOrder(paths, func(i, j int) (bool, bool) {
+		return paths[i].Metadata.LowerLatency(paths[j].Metadata)
+	})
+	return paths
+}
+
+// sortStablePartialOrder sorts the path slice according to the given function
+// defining a partial order.
+// The less function is expected to return:
+//   true,  true if s[i] < s[j]
+//   false, true if s[i] >= s[j]
+//   _    , false otherwise, i.e. if s[i] and s[j] are not comparable
+//
+// NOTE: this is implemented as an insertion sort, so has quadratic complexity.
+// Be careful!
+// XXX: It would be nicer on any slices like sort.Slice, but ... oh golang.
+func sortStablePartialOrder(s []*Path, lessFunc func(i, j int) (bool, bool)) {
+	for i := 1; i < len(s); i++ {
+		k := i
+		for j := k - 1; j >= 0; j-- {
+			less, ok := lessFunc(k, j)
+			if ok && less {
+				s[j], s[k] = s[k], s[j]
+				k = j
+			} else if ok && !less {
+				// elements before i already in order. If s[k] >= s[j], then this is also
+				// true for all comparable elements before j.
+				break
+			}
+		}
+	}
 }
