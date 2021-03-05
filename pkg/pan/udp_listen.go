@@ -89,11 +89,7 @@ func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	if err != nil {
 		return n, UDPAddr{}, nil, err
 	}
-	err = fwPath.spath.Reverse()
-	if err != nil {
-		return n, UDPAddr{}, nil, err
-	}
-	path, err := pathFromForwardingPath(c.local.IA, remote.IA, fwPath)
+	path, err := reversePathFromForwardingPath(remote.IA, c.local.IA, fwPath)
 	return n, remote, path, err
 }
 

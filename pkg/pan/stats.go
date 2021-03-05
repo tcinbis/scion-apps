@@ -46,7 +46,7 @@ func (s *pathStatsDB) get(p pathFingerprint) PathStats {
 	return s.stats[p]
 }
 
-func (s *pathStatsDB) observeLatency(p pathFingerprint, latency time.Duration) {
+func (s *pathStatsDB) registerLatency(p pathFingerprint, latency time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	ps := s.stats[p]
@@ -65,7 +65,8 @@ func (s *pathStatsDB) observeLatency(p pathFingerprint, latency time.Duration) {
 	s.stats[p] = ps
 }
 
-func (s *pathStatsDB) notifyDown(p pathFingerprint) {
+func (s *pathStatsDB) notifyDown(p pathFingerprint, pi PathInterface) {
+	// TODO: "notify" all paths containing pi. get from pool. Or better record the down path interfaces separately?
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	ps := s.stats[p]

@@ -166,7 +166,7 @@ type pathDownSCMPHandler struct {
 
 func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 	scmp := pkt.Payload.(snet.SCMPPayload)
-	path, err := pathFromForwardingPath(pkt.Destination.IA, pkt.Source.IA, ForwardingPath{spath: pkt.Path})
+	path, err := reversePathFromForwardingPath(pkt.Source.IA, pkt.Destination.IA, ForwardingPath{spath: pkt.Path})
 	if err != nil {
 		return err
 	}

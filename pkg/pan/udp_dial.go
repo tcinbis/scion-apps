@@ -90,6 +90,10 @@ func (c *connectedConn) Write(b []byte) (int, error) {
 	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
 }
 
+func (c *connectedConn) WritePath(path *Path, b []byte) (int, error) {
+	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
+}
+
 func (c *connectedConn) Read(b []byte) (int, error) {
 	for {
 		n, remote, _, err := c.scionUDPConn.readMsg(b)
@@ -100,6 +104,23 @@ func (c *connectedConn) Read(b []byte) (int, error) {
 			continue // connected! Ignore spurious packets from wrong source
 		}
 		return n, err
+	}
+}
+
+func (c *connectedConn) ReadPath(b []byte) (int, *Path, error) {
+	for {
+		n, remote, fwPath, err := c.scionUDPConn.readMsg(b)
+		if err != nil {
+			return n, nil, err
+		}
+		if !remote.Equal(c.remote) {
+			continue // connected! Ignore spurious packets from wrong source
+		}
+		path, err := reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
+		if err != nil {
+			continue // just drop the packet if there is something wrong with the path
+		}
+		return n, path, nil
 	}
 }
 

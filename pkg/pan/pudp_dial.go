@@ -15,160 +15,16 @@
 package pan
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
+	"errors"
 	"net"
+	"sync"
+	"time"
 )
 
-/*
-Introduction
-------------
-
-Path UDP, PUDP, (pronnounced pooh-the-pee, for shits and giggles), is an
-EXPERIMENTAL datagram protocol with an explicit path control mechanisms.
-The main/basic features are
-  - path racing (find the lowest latency path and use it)
-  - active path probing to optimise latency and detect faults quickly
-
-The main use case for this is to build a single-path-but-path-optimising QUIC
-on top of this, but it can also be used adopted for raw datagram usecases.
-
-PUDP is defined on top of UDP. Each PUDP message consists of a number of command
-"headers" and the (optional) payload.
-
-Note that all messages, even a payload-only message, is includes a PUDP header,
-making this protocol INCOMPATIBLE with applications speaking plain UDP.
-Both sides have to agree upfront to use PUDP, not UDP.
-Alternatively, this could be defined as UDP + PUDP commands in SCION end-to-end
-extension headers. It's not obvious to me what is "more correct" in terms of
-the layer cake. Including this as part of the UDP payload is certainly easier
-to implement right now.
-
-
-
-Message format
---------------
-
-PUDP message: <command>* <payload>?
-  - command: 1-byte op code + stuff
-    Unless otherwise noted, continue processing the message's next
-    command/payload after each command.
-     - payload:   0x00, data until end of message
-     - race:      0x01, <sequence number>.
-                  Receiver ignores duplicate packets for same sequence number.
-                  Receiver keeps N last used sequence numbers.
-                  If sequence number is in the list, *drop* this duplicate packet.
-                  If sequence number is not in the list:
-                    Insert sequence number to list, replacing the lowest entry,
-                    if this lowest entry is smaller than the new sequence
-                    number.
-                    If sequence number is larger than all previously seen, the
-                    receiver should use this path as the return path.
-
-     - ping:      0x10, <sequence number>.
-                  Reply immediately with pong, <sequence number>.
-     - pong:      0x11, <sequence number>.
-                  Record latency (if this is an expected response)
-
-     - identify:  0x20
-     - me:        0x21, <interface list>
-                  Reply to a `identify`. To indicate that this is an instance
-                  of an anycasted service where different AS interfaces may
-                  lead to different instances. List of interfaces that will
-                  reach this instance.
-                  Interface list is empty if all interfaces may lead to this
-                  instance.
-
-     - prefer:    0x22, <path desc>
-                  Tell the other side that the matching paths are splendid.
-                  TODO
-
-     - avoid:     0x23, <path desc>
-                  Tell the other side that the matching paths are meh.
-                  TODO
-
-  - interface list: 1-byte length N, N times 2-byte interface IDs
-
-  - path desc: TODO
-
-
-
-Operation
----------
-
-The client/dialer controls the path, the server/listener uses the path used by
-the client's last payload message, unless this path is broken.
-This assumes that the path is not voluntarily changed too frequently (not more
-often than once every few RTTs)
-
-
-## Racing
-
-The client starts the connection typically by *racing* the first few messages
-over multiple paths; the same payload is sent over multiple paths with a header
-identifyng this as a race packet that should be deduplicated.
-The server passes the payload to the application and ignores duplicates.
-Once it starts responding, it uses the path on which the packet(s) arrived first.
-responding on the path on which the first packet arrived.
-
-
-## Probing
-
-The client probes paths by sending a `ping`. The server replies with a `pong`
-immediately/very soon.  On the current path, a ping/pong can piggypack on data
-packets.
-The rate for probes packets is on the order of once per second per path. When no
-payload messages are sent, no probes / replies are sent either.
-
-
-## Active / backup paths
-
-The client choses a small subset of the available and allowed paths to be
-*active paths*, based on the path policy. The remaining paths are considered
-backup paths.
-
-The client will apply racing and probing only on the active paths.
-
-If a fault is detected on an active path, the path is relegated replaced with a
-path from the backup set.
-
-
-Unclear
--------
-
-## Leader/follower negotiation
-
-TODO
-For bandwidth exploration & optimisation, the sending side needs to be in
-control of the path.  Assuming that the "receiver" still sends ACKs, and that
-we want to use symmtric paths, an explicit leader/follower mechanism would be
-useful. I imagine it could work like this:
-
-- The leader defines the current path with every data packet (0x00 payload "command").
-  This path should be used by the follower until a different path is
-  "announced", except in case of explicit error notification.
-- Initially, the initiator of the connection is the leader
-- Both sides maintain a weight of how much they want to lead.
-- The command "follow, weight"
-
-
-## Variable MTU
-
-Max payload size varies; different path headers, different PUDP headers.
-How does QUIC cope with this?
-
-Mechanism to allow *querying* max payload size (and other path-related info):
-`conn.MaxPayloadSize()` method, freezes the path and PUDP headers, until after
-the next Write. Effectively, this evaluates the controller exactly like a Write
-would do and caches this (somehow) until the Write.
-
-NOTE: this also applies to the "normal" UDP conn.
-
-*/
-
 // DialPUDP creates a connected PUDP conn.
-func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr) (net.Conn, error) {
+// TODO: Extended dial Config?
+func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Policy) (net.Conn, error) {
 
 	controller := &pudpController{}
 
@@ -176,6 +32,8 @@ func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr) (net.Conn
 	if err != nil {
 		return nil, err
 	}
+
+	controller.Run(udpConn.(*connectedConn))
 
 	return &connectedPUDPConn{
 		connectedConn: udpConn.(*connectedConn),
@@ -188,74 +46,273 @@ type connectedPUDPConn struct {
 	controller *pudpController
 }
 
-type pudpHeader struct {
-	buf *bytes.Buffer
-}
-
-func (h *pudpHeader) race(seq uint16) {
-	h.buf.WriteByte(0x01)
-	binary.Write(h.buf, binary.LittleEndian, seq)
-}
-
-func (h *pudpHeader) ping(seq uint16) {
-	h.buf.WriteByte(0x10)
-	binary.Write(h.buf, binary.LittleEndian, seq)
-}
-
-func (h *pudpHeader) pong(seq uint16) {
-	h.buf.WriteByte(0x11)
-	binary.Write(h.buf, binary.LittleEndian, seq)
-}
-
-func (h *pudpHeader) identify() {
-	h.buf.WriteByte(0x20)
-}
-
-func (h *pudpHeader) Bytes() []byte {
-	return h.buf.Bytes()
-}
-
 func (c *connectedPUDPConn) Write(b []byte) (int, error) {
-	panic("not implemented") // TODO: Implement
 
+	paths, header := c.controller.decide()
+	msg := append(header, b...)
+	for _, path := range paths {
+		c.connectedConn.WritePath(path, msg)
+	}
+	return len(b), nil // XXX?
 	/*
 		// Note: the server side does not do any of this.
 
-		header := pudpHeader{} // TODO use some buffer somewhere
-		if !c.controller.hasReceivedIdentifier {
-			header.identify()
-		}
-		if c.controller.pingCurrent() {
-			header.ping(c.controller.pingSequenceNum())
-		}
-		if c.controller.isRacing() {
-			header.race(c.controller.raceSequenceNum())
-			header.payload()
-			for _, p := range c.controller.paths() {
-				c.connectedConn.writeMsg(header.Serialize() + b, p)
-			}
-		} else {
-			c.connectedConn.Write(header.Bytes() + b)  // XXX: bad copy c/should be avoided
-		}
 	*/
 }
 
 func (c *connectedPUDPConn) Read(b []byte) (int, error) {
-	panic("not implemented") // TODO: Implement
+	for {
+		nr, path, err := c.connectedConn.ReadPath(b)
+		if err != nil {
+			return 0, err
+		}
+		v := &pudpControllerPacketVisitor{}
+		err = pudpParseHeader(b[:nr], v)
+		if err != nil {
+			continue
+		}
+		err = c.controller.registerPacket(path, v.identifier, v.pongSequenceNum)
+		if err != nil {
+			continue
+		}
+		n := copy(b, v.pld)
+		return n, nil
+	}
+}
+
+func (c *connectedPUDPConn) Close() error {
+	c.controller.Close()
+	return c.connectedConn.Close()
 }
 
 type pudpController struct {
-	remoteIdentifier []IfID
+	mutex sync.Mutex
+
+	// client side settings
+	maxRace       int
+	probeInterval time.Duration
+	probeWindow   time.Duration
+
+	/*
+		// server side settings
+		enablePong      bool
+		enableRaceDedup bool
+		enableIdentify  bool
+		identifier      []IfID
+	*/
+
+	Policy     Policy
+	unfiltered []*Path
+	paths      []*Path
+	current    *Path
+
+	requestedRemoteIdentifier bool
+	remoteIdentifier          []IfID
+
+	raceSequenceNum uint16
+	pingSequenceNum uint16
+	pingTime        time.Time
+
+	stop chan struct{}
 }
 
-func (p *pudpController) Path() (*Path, error) {
-	panic("not implemented") // TODO: Implement
+func (c *pudpController) Path() (*Path, error) {
+	panic("not implemented") // We only call connectedConn.WritePath(), bypassing calls to this func
 }
 
-func (p *pudpController) SetPaths(_ []*Path) {
-	panic("not implemented") // TODO: Implement
+func (c *pudpController) decide() ([]*Path, []byte) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	header := pudpHeaderBuilder{} // TODO use some buffer somewhere
+	paths := []*Path{c.current}
+	if c.current == nil {
+		// no path selected (yet), we're racing
+		paths = c.paths
+		if len(paths) > c.maxRace {
+			paths = paths[:c.maxRace]
+		}
+		if len(paths) > 1 {
+			header.race(c.raceSequenceNum)
+			c.raceSequenceNum++
+		}
+		// send one ping during racing
+		if (c.pingTime == time.Time{}) {
+			c.pingTime = time.Now() // TODO:
+			header.ping(c.pingSequenceNum)
+		}
+	} else {
+
+	}
+	if c.remoteIdentifier == nil {
+		header.identify()
+	}
+	/*if c.pingCurrent() {
+		header.ping(c.controller.pingSequenceNum())
+	}*/
+	return paths, header.buf.Bytes()
 }
 
-func (p *pudpController) OnPathDown(_ *Path, _ PathInterface) {
-	panic("not implemented") // TODO: Implement
+func (c *pudpController) SetPaths(paths []*Path) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.unfiltered = paths
+	c.paths = c.filterPaths(paths)
+}
+
+func (c *pudpController) OnPathDown(path *Path, pi PathInterface) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	stats.notifyDown(path.Fingerprint, pi)
+
+	if c.current != nil &&
+		(isInterfaceOnPath(c.current, pi) || path.Fingerprint == c.current.Fingerprint) {
+		//	fmt.Println("failover:", s.current, len(s.paths))
+	}
+}
+
+func (c *pudpController) Run(udpConn *connectedConn) {
+	probeTimer := time.NewTimer(0)
+	<-probeTimer.C
+	inProbeWindow := false
+	for {
+		select {
+		case <-c.stop:
+			break
+		case <-probeTimer.C:
+			if !inProbeWindow {
+				// start probe interval
+				probeTimer.Reset(c.probeWindow)
+				inProbeWindow = false
+			} else {
+				// probe window ended
+				probeTimer.Reset(c.probeInterval - c.probeWindow)
+				inProbeWindow = true
+			}
+		}
+	}
+}
+
+func (c *pudpController) Close() error {
+	c.stop <- struct{}{}
+	return nil
+}
+
+func (c *pudpController) filterPaths(paths []*Path) []*Path {
+	paths = filterPathsByLastHopInterface(paths, c.remoteIdentifier)
+	if c.Policy != nil {
+		return c.Policy.Filter(paths)
+	}
+	return paths
+}
+
+func (c *pudpController) registerPacket(path *Path, identifier []IfID,
+	pongSequenceNum interface{}) error {
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Register first remote identifier; effectively, pick an anycast instance
+	if c.remoteIdentifier == nil && identifier != nil {
+		c.remoteIdentifier = identifier
+		c.paths = c.filterPaths(c.unfiltered)
+	} else if c.remoteIdentifier != nil && identifier != nil {
+		// if we've previously seen a remote identifier, drop the packet if this
+		// does not match (response from a different anycast instance)
+		// Simple comparison seems ok here, if it's the same instance there's no reason it should
+		// e.g. change the order or the entries.
+		if !ifidSliceEqual(c.remoteIdentifier, identifier) {
+			return errors.New("unexpected non-matching remote identifier")
+		}
+	}
+
+	// If we are awaiting the first reply packet during/after racing, pick this
+	// path to continue sending on (if it is indeed in the set of available
+	// paths...).
+	if c.current == nil {
+		for _, p := range c.paths {
+			if p.Fingerprint == path.Fingerprint {
+				c.current = p
+				break
+			}
+		}
+	}
+
+	if pongSequenceNum != nil {
+		c.registerPong(pongSequenceNum.(int), path)
+	}
+	return nil
+}
+
+func (c *pudpController) registerPong(seq int, path *Path) {
+	if c.pingSequenceNum == seq {
+		// XXX: we should register the samples already when
+		// sending the probe and then update it on the pong. This will give a
+		// better view of dead paths when sorting
+		stats.registerLatency(path.Fingerprint, time.Since(c.pingTime))
+	}
+}
+
+func filterPathsByLastHopInterface(paths []*Path, interfaces []IfID) []*Path {
+	// empty interface list means don't care
+	if len(interfaces) == 0 {
+		return paths
+	}
+	filtered := make([]*Path, 0, len(paths))
+	for _, p := range paths {
+		if p.Metadata != nil || len(p.Metadata.Interfaces) > 0 {
+			last := p.Metadata.Interfaces[len(p.Metadata.Interfaces)-1]
+			// if last in list, keep it:
+			for _, ifid := range interfaces {
+				if last.IfID == ifid {
+					filtered = append(filtered, p)
+					break
+				}
+			}
+		}
+	}
+	return filtered
+}
+
+func ifidSliceEqual(a, b []IfID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type pudpControllerPacketVisitor struct {
+	pld             []byte
+	identifier      []IfID
+	pongSequenceNum interface{} // optional int
+}
+
+func (v *pudpControllerPacketVisitor) payload(b []byte) {
+	v.pld = b
+}
+
+func (v *pudpControllerPacketVisitor) race(seq uint16) {
+	// ignore (or error!?)
+}
+
+func (v *pudpControllerPacketVisitor) ping(seq uint16) {
+	// ignore (or error!?)
+}
+
+func (v *pudpControllerPacketVisitor) pong(seq uint16) {
+	v.pongSequenceNum = int(seq)
+}
+
+func (v *pudpControllerPacketVisitor) identify() {
+	// ignore (or error!?)
+}
+
+func (v *pudpControllerPacketVisitor) me(ifids []IfID) {
+	v.identifier = ifids
 }

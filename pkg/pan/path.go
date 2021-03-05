@@ -238,11 +238,16 @@ func (p ForwardingPath) forwardingPathInfo() (forwardingPathInfo, error) {
 	}
 }
 
-// pathFromForwardingPath creates a Path including fingerprint and expiry information from
+// reversePathFromForwardingPath creates a Path including fingerprint and expiry information from
 // the dataplane forwarding path.
-func pathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, error) {
+func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, error) {
 	if fwPath.IsEmpty() {
 		return nil, nil
+	}
+	// XXX: inefficient, decoding twice! Change this to decode and then both
+	// reverse and extract fw info
+	if err := fwPath.spath.Reverse(); err != nil {
+		return nil, err
 	}
 	fpi, err := fwPath.forwardingPathInfo()
 	if err != nil {

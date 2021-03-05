@@ -101,9 +101,10 @@ func init() {
 	// XXX: just put something here. This should be controlled by commandline
 	// parameters, obviously.
 	policy := pan.PolicyChain{
-		pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
+		/*pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
 			return paths[:3]
-		}),
+		}),*/
+		pan.LowestLatency{},
 		&pan.InteractiveSelection{
 			Prompter: pan.CommandlinePrompter{},
 		},
