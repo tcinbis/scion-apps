@@ -20,15 +20,11 @@ import (
 	"time"
 )
 
-// XXX
 // Why the global pool:
 // - share cache between multiple connections
 // - share stats
 // - have something central that does refresh before expiration
 // this is all private stuff
-// if we need to implement the basic policies with "watchers" or "path handles" with callbacks or
-// something then this should be possible without API changes
-// also, whether or not we have this pool thing is also private
 var pool pathPool
 
 // pathPoolDst is path pool entry for one destination IA

@@ -26,8 +26,8 @@ import (
 type InteractiveSelectionType int
 
 const (
-	InteractiveSelectionTypePinned    = iota
-	InteractiveSelectionTypePreferred = iota
+	InteractiveSelectionTypePinned = iota
+	InteractiveSelectionTypePreferred
 )
 
 // InteractiveSelection is a path policy that prompts for paths once per
@@ -52,7 +52,6 @@ func (p *InteractiveSelection) Filter(paths []*Path) []*Path {
 	if p.Type == InteractiveSelectionTypePinned {
 		return Pinned{choice}.Filter(paths)
 	} else {
-		fmt.Println("preferred", choice)
 		return Preferred{choice}.Filter(paths)
 	}
 }

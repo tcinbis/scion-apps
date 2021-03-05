@@ -48,6 +48,7 @@ func (p *Path) Copy() *Path {
 }
 
 func (p *Path) String() string {
+	// TODO: if p.Metadata != nil { return p.Interfaces.String() }
 	return p.Fingerprint
 }
 
