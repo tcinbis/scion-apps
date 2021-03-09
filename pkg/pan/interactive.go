@@ -35,7 +35,7 @@ const (
 type InteractiveSelection struct {
 	Type     InteractiveSelectionType
 	Prompter Prompter
-	choices  map[IA][]pathFingerprint
+	choices  map[IA][]PathFingerprint
 }
 
 func (p *InteractiveSelection) Filter(paths []*Path) []*Path {
@@ -45,7 +45,7 @@ func (p *InteractiveSelection) Filter(paths []*Path) []*Path {
 		chosenPaths := p.Prompter.Prompt(paths, dstIA)
 		choice = pathFingerprints(chosenPaths)
 		if p.choices == nil {
-			p.choices = make(map[IA][]pathFingerprint)
+			p.choices = make(map[IA][]PathFingerprint)
 		}
 		p.choices[dstIA] = choice
 	}

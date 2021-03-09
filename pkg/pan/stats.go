@@ -37,16 +37,16 @@ type StatsLatencySample struct {
 
 type pathStatsDB struct {
 	mutex sync.RWMutex
-	stats map[pathFingerprint]PathStats
+	stats map[PathFingerprint]PathStats
 }
 
-func (s *pathStatsDB) get(p pathFingerprint) PathStats {
+func (s *pathStatsDB) get(p PathFingerprint) PathStats {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.stats[p]
 }
 
-func (s *pathStatsDB) registerLatency(p pathFingerprint, latency time.Duration) {
+func (s *pathStatsDB) registerLatency(p PathFingerprint, latency time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	ps := s.stats[p]
@@ -65,7 +65,7 @@ func (s *pathStatsDB) registerLatency(p pathFingerprint, latency time.Duration) 
 	s.stats[p] = ps
 }
 
-func (s *pathStatsDB) notifyDown(p pathFingerprint, pi PathInterface) {
+func (s *pathStatsDB) notifyDown(p PathFingerprint, pi PathInterface) {
 	// TODO: "notify" all paths containing pi. get from pool. Or better record the down path interfaces separately?
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -78,10 +78,10 @@ var stats pathStatsDB
 
 func init() {
 	stats = pathStatsDB{
-		stats: make(map[pathFingerprint]PathStats),
+		stats: make(map[PathFingerprint]PathStats),
 	}
 }
 
-func Stats(path pathFingerprint) PathStats {
+func Stats(path PathFingerprint) PathStats {
 	return stats.get(path)
 }

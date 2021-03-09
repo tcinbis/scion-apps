@@ -109,7 +109,7 @@ func (e *pathPoolDst) update(paths []*Path) {
 	// the updated entry includes all new paths.
 	// Any non-expired old path not included in the new paths is appended to the
 	// back (but in same order)
-	newPathSet := make(map[pathFingerprint]struct{}, len(paths))
+	newPathSet := make(map[PathFingerprint]struct{}, len(paths))
 	for _, p := range paths {
 		newPathSet[p.Fingerprint] = struct{}{}
 	}

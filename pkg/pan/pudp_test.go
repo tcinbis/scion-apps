@@ -15,7 +15,6 @@
 package pan
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 
@@ -102,7 +101,7 @@ func TestPUDPHeaderBuilder(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			b := &pudpHeaderBuilder{&bytes.Buffer{}}
+			b := &pudpHeaderBuilder{}
 			c.run(b)
 			assert.Equal(t, c.expected, b.Bytes())
 		})
@@ -241,7 +240,7 @@ func TestPUDPHeaderParser(t *testing.T) {
 }
 
 // testPudpHeaderVisitor parses a header into a string representation (only!)
-// suitable for comparision in a test.
+// suitable for comparison in a test.
 type testPudpHeaderVisitor struct {
 	s string
 }

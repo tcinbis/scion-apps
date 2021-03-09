@@ -147,7 +147,7 @@ func TestSortStablePartialOrder(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			paths := testdataPathsFromStrings(c.in)
 			sortStablePartialOrder(paths, func(i, j int) (bool, bool) {
-				return subset(paths[i].Fingerprint, paths[j].Fingerprint)
+				return subset(string(paths[i].Fingerprint), string(paths[j].Fingerprint))
 			})
 			actual := stringsFromTestdataPaths(paths)
 			assert.Equal(t, c.out, actual)
@@ -163,7 +163,7 @@ func testdataPathsFromStrings(strs []string) []*Path {
 	}
 	paths := make([]*Path, len(strs))
 	for i, s := range strs {
-		paths[i] = &Path{Fingerprint: s}
+		paths[i] = &Path{Fingerprint: PathFingerprint(s)}
 	}
 	return paths
 }
@@ -176,7 +176,7 @@ func stringsFromTestdataPaths(paths []*Path) []string {
 	}
 	strs := make([]string, len(paths))
 	for i, p := range paths {
-		strs[i] = p.Fingerprint
+		strs[i] = string(p.Fingerprint)
 	}
 	return strs
 }

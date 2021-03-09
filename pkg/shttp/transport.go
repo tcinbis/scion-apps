@@ -39,7 +39,7 @@ type RoundTripper struct {
 }
 
 // dialFunc is the function type supported in http3.RoundTripper.Dial
-type dialFunc = func(network, address string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error)
+type dialFunc func(network, address string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error)
 
 // NewRoundTripper creates a new RoundTripper that can be used as the Transport
 // of an http.Client.

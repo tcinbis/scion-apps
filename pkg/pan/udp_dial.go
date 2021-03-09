@@ -136,7 +136,6 @@ type pathSetter interface {
 }
 
 type pathRefreshSubscriber struct {
-	policy Policy
 	remote UDPAddr
 	target pathSetter
 }
@@ -181,7 +180,7 @@ type DefaultSelector struct {
 	unfiltered         []*Path
 	paths              []*Path
 	current            int
-	currentFingerprint pathFingerprint
+	currentFingerprint PathFingerprint
 }
 
 func (s *DefaultSelector) Path() *Path {

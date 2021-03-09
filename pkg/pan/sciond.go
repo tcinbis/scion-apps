@@ -78,7 +78,7 @@ func initScionHostContext() (scionHostContext, error) {
 		return scionHostContext{}, err
 	}
 	return scionHostContext{
-		ia:            localIA,
+		ia:            IA(localIA),
 		sciond:        sciondConn,
 		dispatcher:    dispatcher,
 		hostInLocalAS: hostInLocalAS,
@@ -166,7 +166,8 @@ func defaultLocalAddr(local *net.UDPAddr) (*net.UDPAddr, error) {
 }
 
 func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]*Path, error) {
-	snetPaths, err := h.sciond.Paths(ctx, dst, IA{}, daemon.PathReqFlags{Refresh: false, Hidden: false})
+	flags := daemon.PathReqFlags{Refresh: false, Hidden: false}
+	snetPaths, err := h.sciond.Paths(ctx, addr.IA(dst), addr.IA{}, flags)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +185,8 @@ func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]*Path, err
 			Notes:        snetMetadata.Notes,
 		}
 		paths[i] = &Path{
+			Source:      h.ia,
+			Destination: dst,
 			Metadata:    metadata,
 			Fingerprint: pathSequenceFromInterfaces(metadata.Interfaces).Fingerprint(),
 			Expiry:      snetMetadata.Expiry,
@@ -200,7 +203,7 @@ func convertPathInterfaceSlice(spis []snet.PathInterface) []PathInterface {
 	pis := make([]PathInterface, len(spis))
 	for i, spi := range spis {
 		pis[i] = PathInterface{
-			IA:   spi.IA,
+			IA:   IA(spi.IA),
 			IfID: IfID(spi.ID),
 		}
 	}

@@ -40,7 +40,7 @@ func openScionPacketConn(ctx context.Context, local *net.UDPAddr,
 	dispatcher := host().dispatcher
 	ia := host().ia
 
-	rconn, port, err := dispatcher.Register(ctx, ia, local, addr.SvcNone)
+	rconn, port, err := dispatcher.Register(ctx, addr.IA(ia), local, addr.SvcNone)
 	if err != nil {
 		return nil, UDPAddr{}, err
 	}
@@ -79,6 +79,14 @@ func (c *scionUDPConn) SetWriteDeadline(t time.Time) error {
 
 func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
 
+	// assert:
+	if src.IA != path.Source {
+		panic("writeMsg: src.IA != path.Source")
+	}
+	if dst.IA != path.Destination {
+		panic("writeMsg: dst.IA != path.Destination")
+	}
+
 	var spath spath.Path
 	var nextHop *net.UDPAddr
 	if src.IA == dst.IA {
@@ -97,11 +105,11 @@ func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, er
 		Bytes: c.writeBuffer,
 		PacketInfo: snet.PacketInfo{ // bah
 			Source: snet.SCIONAddress{
-				IA:   src.IA,
+				IA:   addr.IA(src.IA),
 				Host: addr.HostFromIP(src.IP),
 			},
 			Destination: snet.SCIONAddress{
-				IA:   dst.IA,
+				IA:   addr.IA(dst.IA),
 				Host: addr.HostFromIP(dst.IP),
 			},
 			Path: spath,
@@ -143,7 +151,7 @@ func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 			continue // ignore non-UDP packet
 		}
 		remote := UDPAddr{
-			IA:   pkt.Source.IA,
+			IA:   IA(pkt.Source.IA),
 			IP:   append(net.IP{}, pkt.Source.Host.IP()...),
 			Port: int(udp.SrcPort),
 		}
@@ -166,7 +174,11 @@ type pathDownSCMPHandler struct {
 
 func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 	scmp := pkt.Payload.(snet.SCMPPayload)
-	path, err := reversePathFromForwardingPath(pkt.Source.IA, pkt.Destination.IA, ForwardingPath{spath: pkt.Path})
+	path, err := reversePathFromForwardingPath(
+		IA(pkt.Source.IA),
+		IA(pkt.Destination.IA),
+		ForwardingPath{spath: pkt.Path},
+	)
 	if err != nil {
 		return err
 	}
@@ -174,16 +186,16 @@ func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 	case slayers.SCMPTypeExternalInterfaceDown:
 		msg := pkt.Payload.(snet.SCMPExternalInterfaceDown)
 		pi := PathInterface{
-			IA:   msg.IA,
-			IfID: msg.Interface,
+			IA:   IA(msg.IA),
+			IfID: IfID(msg.Interface),
 		}
 		h.pathDownHandler.OnPathDown(path, pi) // XXX: forwarding path!!
 		return nil
 	case slayers.SCMPTypeInternalConnectivityDown:
 		msg := pkt.Payload.(snet.SCMPInternalConnectivityDown)
 		pi := PathInterface{
-			IA:   msg.IA,
-			IfID: msg.Egress,
+			IA:   IA(msg.IA),
+			IfID: IfID(msg.Egress),
 		}
 		h.pathDownHandler.OnPathDown(path, pi) // XXX: forwarding path!!
 		return nil

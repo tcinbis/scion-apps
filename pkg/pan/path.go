@@ -29,9 +29,11 @@ import (
 // XXX: revisit: is this a pointer or value type?
 type Path struct {
 	// XXX: think about this again. what goes where? should ForwardingPath be exported?
+	Source         IA
+	Destination    IA
 	ForwardingPath ForwardingPath
 	Metadata       *PathMetadata // optional
-	Fingerprint    pathFingerprint
+	Fingerprint    PathFingerprint
 	Expiry         time.Time
 }
 
@@ -40,6 +42,8 @@ func (p *Path) Copy() *Path {
 		return nil
 	}
 	return &Path{
+		Source:         p.Source,
+		Destination:    p.Destination,
 		ForwardingPath: p.ForwardingPath.Copy(),
 		Metadata:       p.Metadata.Copy(),
 		Fingerprint:    p.Fingerprint,
@@ -49,150 +53,21 @@ func (p *Path) Copy() *Path {
 
 func (p *Path) String() string {
 	// TODO: if p.Metadata != nil { return p.Interfaces.String() }
-	return p.Fingerprint
+	return string(p.Fingerprint)
 }
 
-// XXX: copied from snet.PathMetadata: does not contain Expiry and uses the
-// local types (pan.PathInterface instead of snet.PathInterface, ...)
-
-// PathMetadata contains supplementary information about a path.
-//
-// The information about MTU, Latency, Bandwidth etc. are based solely on data
-// contained in the AS entries in the path construction beacons. These entries
-// are signed/verified based on the control plane PKI. However, the
-// *correctness* of this meta data has *not* been checked.
-type PathMetadata struct {
-	// Interfaces is a list of interfaces on the path.
-	Interfaces []PathInterface
-
-	// MTU is the maximum transmission unit for the path, in bytes.
-	MTU uint16
-
-	// Latency lists the latencies between any two consecutive interfaces.
-	// Entry i describes the latency between interface i and i+1.
-	// Consequently, there are N-1 entries for N interfaces.
-	// A 0-value indicates that the AS did not announce a latency for this hop.
-	Latency []time.Duration
-
-	// Bandwidth lists the bandwidth between any two consecutive interfaces, in Kbit/s.
-	// Entry i describes the bandwidth between interfaces i and i+1.
-	// A 0-value indicates that the AS did not announce a bandwidth for this hop.
-	Bandwidth []uint64
-
-	// Geo lists the geographical position of the border routers along the path.
-	// Entry i describes the position of the router for interface i.
-	// A 0-value indicates that the AS did not announce a position for this router.
-	Geo []GeoCoordinates
-
-	// LinkType contains the announced link type of inter-domain links.
-	// Entry i describes the link between interfaces 2*i and 2*i+1.
-	LinkType []LinkType
-
-	// InternalHops lists the number of AS internal hops for the ASes on path.
-	// Entry i describes the hop between interfaces 2*i+1 and 2*i+2 in the same AS.
-	// Consequently, there are no entries for the first and last ASes, as these
-	// are not traversed completely by the path.
-	InternalHops []uint32
-
-	// Notes contains the notes added by ASes on the path, in the order of occurrence.
-	// Entry i is the note of AS i on the path.
-	Notes []string
-}
-
-func (pm *PathMetadata) Copy() *PathMetadata {
-	if pm == nil {
-		return nil
-	}
-	return &PathMetadata{
-		Interfaces:   append(pm.Interfaces[:0:0], pm.Interfaces...),
-		MTU:          pm.MTU,
-		Latency:      append(pm.Latency[:0:0], pm.Latency...),
-		Bandwidth:    append(pm.Bandwidth[:0:0], pm.Bandwidth...),
-		Geo:          append(pm.Geo[:0:0], pm.Geo...),
-		LinkType:     append(pm.LinkType[:0:0], pm.LinkType...),
-		InternalHops: append(pm.InternalHops[:0:0], pm.InternalHops...),
-		Notes:        append(pm.Notes[:0:0], pm.Notes...),
-	}
-}
-
-// LowerLatency compares the latency of two paths.
-// Returns
-//  - true, true if a has strictly lower latency than b
-//  - false, true if a has equal or higher latency than b
-//  - _, false if not enough information is available to compare a and b
-func (a *PathMetadata) LowerLatency(b *PathMetadata) (bool, bool) {
-	totA, unknownA := a.latencySum()
-	totB, unknownB := b.latencySum()
-	if totA < totB && unknownA.subsetOf(unknownB) {
-		// total of known smaller and all unknown hops in A are also in B
-		return true, true
-	} else if totA >= totB && unknownB.subsetOf(unknownA) {
-		// total of known larger/equal all unknown hops in B are also in A
-		return false, true
-	}
-	return false, false
-}
-
-// latencySum returns the total latency and the set of edges with unknown
-// latency
-// XXX: the latency from the end hosts to the first/last interface is always
-// unknown. If that is taken into account, all the paths become incomparable.
-func (pm *PathMetadata) latencySum() (time.Duration, pathHopSet) {
-	var sum time.Duration
-	unknown := make(pathHopSet)
-	for i := 0; i < len(pm.Interfaces)-1; i++ {
-		l := pm.Latency[i]
-		if l != 0 { // XXX: needs to be fixed in combinator/snet; should not use 0 for unknown
-			sum += l
-		} else {
-			unknown[pathHop{a: pm.Interfaces[i], b: pm.Interfaces[i+1]}] = struct{}{}
-		}
-	}
-	return sum, unknown
-}
-
-type PathInterface struct {
-	IA   IA
-	IfID IfID
-}
 type GeoCoordinates = snet.GeoCoordinates
 type LinkType = snet.LinkType
 
-type pathHop struct {
-	a, b PathInterface
-}
-
-type pathHopSet map[pathHop]struct{}
-
-func (a pathHopSet) subsetOf(b pathHopSet) bool {
-	for x := range a {
-		if _, inB := b[x]; !inB {
-			return false
-		}
-	}
-	return true
-}
-func isInterfaceOnPath(p *Path, pi PathInterface) bool {
-	for _, c := range p.Metadata.Interfaces {
-		if c == pi {
-			return true
-		}
-	}
-	return false
-}
-
-// pathDestination returns the destination IA of a path.
-// XXX: only implemented for paths with metadata.
-// XXX: always available, make this a member of Path instead
+// XXX: remove
 func pathDestination(p *Path) IA {
-	ifaces := p.Metadata.Interfaces
-	return ifaces[len(ifaces)-1].IA
+	return p.Destination
 }
 
 // ForwardingPath represents a data plane forwarding path.
 type ForwardingPath struct {
 	spath    spath.Path
-	underlay *net.UDPAddr /// XXX not sure it's a good idea to put this here.
+	underlay *net.UDPAddr
 }
 
 func (p ForwardingPath) IsEmpty() bool {
@@ -260,6 +135,8 @@ func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, e
 		InterfaceIDs: fpi.interfaceIDs,
 	}.Fingerprint()
 	return &Path{
+		Source:         dst,
+		Destination:    src,
 		ForwardingPath: fwPath,
 		Expiry:         fpi.expiry,
 		Fingerprint:    fingerprint,
@@ -333,8 +210,8 @@ func interfaceIDsFromDecoded(sp scion.Decoded) []IfID {
 
 // pathSequence describes a path by source and dest IA and a sequence of interface IDs.
 // This information can be obtained even from the raw forwarding paths.
-// This can be used to identify a path regardless of which path segments it is
-// created from.
+// This can be used to identify a path by its hop sequence, regardless of which
+// path segments it is created from.
 type pathSequence struct {
 	Source       IA
 	Destination  IA
@@ -354,22 +231,24 @@ func pathSequenceFromInterfaces(interfaces []PathInterface) pathSequence {
 }
 
 // Fingerprint returns the pathSequence as a comparable/hashable object (string).
-func (s pathSequence) Fingerprint() pathFingerprint {
-	// XXX: currently somewhat human readable, could do full binary (or hash like
-	// in snet.Fingerprint, but what's the point really?)
+func (s pathSequence) Fingerprint() PathFingerprint {
+	// XXX: currently somewhat human readable, could do simple binary
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s", s.Source, s.Destination)
 	for _, ifID := range s.InterfaceIDs {
 		fmt.Fprintf(&b, " %d", ifID)
 	}
-	return b.String()
+	return PathFingerprint(b.String())
 }
 
-// XXX: rename. "pathSequenceKey"?
-type pathFingerprint = string
+// XXX: rename. "PathSequenceKey"?
+// PathFingerprint is an opaque identifier for a path. It identifies a path by
+// its source and destination IA and the sequence of interface identifiers
+// along the path.
+type PathFingerprint string
 
-func pathFingerprints(paths []*Path) []pathFingerprint {
-	fingerprints := make([]pathFingerprint, len(paths))
+func pathFingerprints(paths []*Path) []PathFingerprint {
+	fingerprints := make([]PathFingerprint, len(paths))
 	for i, p := range paths {
 		fingerprints[i] = p.Fingerprint
 	}

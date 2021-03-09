@@ -43,7 +43,7 @@ func (p PolicyChain) Filter(paths []*Path) []*Path {
 // Pinned is a policy that keeps only a preselected set of paths.
 // This can be used to implement interactive hard path selection.
 type Pinned struct {
-	sequence []pathFingerprint
+	sequence []PathFingerprint
 }
 
 func (p Pinned) Filter(paths []*Path) []*Path {
@@ -63,7 +63,7 @@ func (p Pinned) Filter(paths []*Path) []*Path {
 // to the top.  This can be used to implement interactive path preference with
 // failover to other paths.
 type Preferred struct {
-	sequence []pathFingerprint
+	sequence []PathFingerprint
 }
 
 func (p Preferred) Filter(paths []*Path) []*Path {

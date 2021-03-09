@@ -105,8 +105,8 @@ import (
 )
 
 // XXX: leaking addr
-type IA = addr.IA
-type IfID = uint64
+type IA addr.IA
+type IfID uint64
 
 // NOTE: does _NOT_ contain path
 type UDPAddr struct {
@@ -143,7 +143,7 @@ func ParseUDPAddr(s string) (UDPAddr, error) {
 		return UDPAddr{}, err
 	}
 	return UDPAddr{
-		IA:   addr.IA,
+		IA:   IA(addr.IA),
 		IP:   addr.Host.IP,
 		Port: addr.Host.Port,
 	}, nil
