@@ -51,8 +51,6 @@ Message format
 
 PUDP message: <command>* <payload>?
   - command: 1-byte op code + stuff
-    Unless otherwise noted, continue processing the message's next
-    command/payload after each command.
      - payload:   0x00, data until end of message
      - race:      0x01, <sequence number>.
                   Receiver ignores duplicate packets for same sequence number.
@@ -178,22 +176,22 @@ const (
 )
 
 type pudpHeaderBuilder struct {
-	buf *bytes.Buffer
+	buf bytes.Buffer
 }
 
 func (b *pudpHeaderBuilder) race(seq uint16) {
 	b.buf.WriteByte(byte(pudpHeaderRace))
-	binary.Write(b.buf, binary.BigEndian, seq)
+	binary.Write(&b.buf, binary.BigEndian, seq)
 }
 
 func (b *pudpHeaderBuilder) ping(seq uint16) {
 	b.buf.WriteByte(byte(pudpHeaderPing))
-	binary.Write(b.buf, binary.BigEndian, seq)
+	binary.Write(&b.buf, binary.BigEndian, seq)
 }
 
 func (b *pudpHeaderBuilder) pong(seq uint16) {
 	b.buf.WriteByte(byte(pudpHeaderPong))
-	binary.Write(b.buf, binary.BigEndian, seq)
+	binary.Write(&b.buf, binary.BigEndian, seq)
 }
 
 func (b *pudpHeaderBuilder) identify() {
@@ -207,7 +205,7 @@ func (b *pudpHeaderBuilder) me(ifids []IfID) {
 	}
 	b.buf.WriteByte(byte(len(ifids)))
 	for _, ifid := range ifids {
-		binary.Write(b.buf, binary.BigEndian, uint16(ifid))
+		binary.Write(&b.buf, binary.BigEndian, uint16(ifid))
 	}
 }
 

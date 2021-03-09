@@ -17,6 +17,7 @@ package pan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -25,16 +26,16 @@ import (
 // DialPUDP creates a connected PUDP conn.
 // TODO: Extended dial Config?
 func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Policy) (net.Conn, error) {
-
-	controller := &pudpController{}
-
+	controller := &pudpController{
+		maxRace: 5, // XXX
+		stop:    make(chan struct{}),
+		policy:  policy,
+	}
 	udpConn, err := DialUDP(ctx, local, remote, controller)
 	if err != nil {
 		return nil, err
 	}
-
-	controller.Run(udpConn.(*connectedConn))
-
+	go controller.Run(udpConn.(*connectedConn))
 	return &connectedPUDPConn{
 		connectedConn: udpConn.(*connectedConn),
 		controller:    controller,
@@ -47,17 +48,16 @@ type connectedPUDPConn struct {
 }
 
 func (c *connectedPUDPConn) Write(b []byte) (int, error) {
-
 	paths, header := c.controller.decide()
 	msg := append(header, b...)
+	if len(paths) > 1 {
+		fmt.Println("racing", len(paths))
+		fmt.Println(paths)
+	}
 	for _, path := range paths {
 		c.connectedConn.WritePath(path, msg)
 	}
 	return len(b), nil // XXX?
-	/*
-		// Note: the server side does not do any of this.
-
-	*/
 }
 
 func (c *connectedPUDPConn) Read(b []byte) (int, error) {
@@ -93,17 +93,9 @@ type pudpController struct {
 	probeInterval time.Duration
 	probeWindow   time.Duration
 
-	/*
-		// server side settings
-		enablePong      bool
-		enableRaceDedup bool
-		enableIdentify  bool
-		identifier      []IfID
-	*/
-
-	Policy     Policy
+	policy     Policy
 	unfiltered []*Path
-	paths      []*Path
+	paths      []*Path // XXX: active set?
 	current    *Path
 
 	requestedRemoteIdentifier bool
@@ -116,7 +108,7 @@ type pudpController struct {
 	stop chan struct{}
 }
 
-func (c *pudpController) Path() (*Path, error) {
+func (c *pudpController) Path() *Path {
 	panic("not implemented") // We only call connectedConn.WritePath(), bypassing calls to this func
 }
 
@@ -124,7 +116,7 @@ func (c *pudpController) decide() ([]*Path, []byte) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	header := pudpHeaderBuilder{} // TODO use some buffer somewhere
+	header := pudpHeaderBuilder{} // TODO use some buffer somewhere?
 	paths := []*Path{c.current}
 	if c.current == nil {
 		// no path selected (yet), we're racing
@@ -136,20 +128,18 @@ func (c *pudpController) decide() ([]*Path, []byte) {
 			header.race(c.raceSequenceNum)
 			c.raceSequenceNum++
 		}
-		// send one ping during racing
+		// send one first ping during racing
 		if (c.pingTime == time.Time{}) {
 			c.pingTime = time.Now() // TODO:
 			header.ping(c.pingSequenceNum)
 		}
+		if c.remoteIdentifier == nil {
+			header.identify()
+		}
 	} else {
-
+		// ping if in window?
 	}
-	if c.remoteIdentifier == nil {
-		header.identify()
-	}
-	/*if c.pingCurrent() {
-		header.ping(c.controller.pingSequenceNum())
-	}*/
+	header.buf.WriteByte(byte(pudpHeaderPayload))
 	return paths, header.buf.Bytes()
 }
 
@@ -158,6 +148,8 @@ func (c *pudpController) SetPaths(paths []*Path) {
 	defer c.mutex.Unlock()
 	c.unfiltered = paths
 	c.paths = c.filterPaths(paths)
+
+	// TODO reset c.current! Set current again or switch path
 }
 
 func (c *pudpController) OnPathDown(path *Path, pi PathInterface) {
@@ -184,11 +176,12 @@ func (c *pudpController) Run(udpConn *connectedConn) {
 			if !inProbeWindow {
 				// start probe interval
 				probeTimer.Reset(c.probeWindow)
-				inProbeWindow = false
+				inProbeWindow = true
+
 			} else {
 				// probe window ended
 				probeTimer.Reset(c.probeInterval - c.probeWindow)
-				inProbeWindow = true
+				inProbeWindow = false
 			}
 		}
 	}
@@ -201,8 +194,8 @@ func (c *pudpController) Close() error {
 
 func (c *pudpController) filterPaths(paths []*Path) []*Path {
 	paths = filterPathsByLastHopInterface(paths, c.remoteIdentifier)
-	if c.Policy != nil {
-		return c.Policy.Filter(paths)
+	if c.policy != nil {
+		return c.policy.Filter(paths)
 	}
 	return paths
 }
@@ -230,8 +223,11 @@ func (c *pudpController) registerPacket(path *Path, identifier []IfID,
 	// If we are awaiting the first reply packet during/after racing, pick this
 	// path to continue sending on (if it is indeed in the set of available
 	// paths...).
+	fmt.Println("here")
 	if c.current == nil {
+		fmt.Println("path.Fingerprint", path.Fingerprint)
 		for _, p := range c.paths {
+			fmt.Println("p.Fingerprint", p.Fingerprint)
 			if p.Fingerprint == path.Fingerprint {
 				c.current = p
 				break
@@ -240,12 +236,12 @@ func (c *pudpController) registerPacket(path *Path, identifier []IfID,
 	}
 
 	if pongSequenceNum != nil {
-		c.registerPong(pongSequenceNum.(int), path)
+		c.registerPong(pongSequenceNum.(uint16), path)
 	}
 	return nil
 }
 
-func (c *pudpController) registerPong(seq int, path *Path) {
+func (c *pudpController) registerPong(seq uint16, path *Path) {
 	if c.pingSequenceNum == seq {
 		// XXX: we should register the samples already when
 		// sending the probe and then update it on the pong. This will give a
@@ -306,7 +302,7 @@ func (v *pudpControllerPacketVisitor) ping(seq uint16) {
 }
 
 func (v *pudpControllerPacketVisitor) pong(seq uint16) {
-	v.pongSequenceNum = int(seq)
+	v.pongSequenceNum = seq
 }
 
 func (v *pudpControllerPacketVisitor) identify() {

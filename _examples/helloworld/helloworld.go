@@ -48,7 +48,7 @@ func main() {
 }
 
 func runServer(port int) error {
-	conn, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: port}, nil)
+	conn, err := pan.ListenPUDP(context.Background(), &net.UDPAddr{Port: port})
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func runClient(address string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pan.DialUDP(context.Background(), nil, addr, nil)
+	conn, err := pan.DialPUDP(context.Background(), nil, addr, nil)
 	if err != nil {
 		return err
 	}

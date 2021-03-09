@@ -238,8 +238,9 @@ func (p ForwardingPath) forwardingPathInfo() (forwardingPathInfo, error) {
 	}
 }
 
-// reversePathFromForwardingPath creates a Path including fingerprint and expiry information from
-// the dataplane forwarding path.
+// reversePathFromForwardingPath creates a Path for the return direction from the information
+// on a received packet.
+// The created Path includes fingerprint and expiry information.
 func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, error) {
 	if fwPath.IsEmpty() {
 		return nil, nil
@@ -254,8 +255,8 @@ func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, e
 		return nil, err
 	}
 	fingerprint := pathSequence{
-		Source:       src,
-		Destination:  dst,
+		Source:       dst,
+		Destination:  src,
 		InterfaceIDs: fpi.interfaceIDs,
 	}.Fingerprint()
 	return &Path{

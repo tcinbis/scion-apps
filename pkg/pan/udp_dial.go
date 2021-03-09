@@ -81,10 +81,9 @@ func (c *connectedConn) RemoteAddr() net.Addr {
 func (c *connectedConn) Write(b []byte) (int, error) {
 	var path *Path
 	if c.local.IA != c.remote.IA {
-		var err error
-		path, err = c.Selector.Path()
-		if err != nil {
-			return 0, err
+		path = c.Selector.Path()
+		if path == nil {
+			return 0, errNoPath
 		}
 	}
 	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
@@ -171,7 +170,7 @@ func (s *pathRefreshSubscriber) refresh(dst IA, paths []*Path) {
 // Selector controls the path used by a single **connected** socket. Stateful.
 // The Path() function is invoked for every single packet.
 type Selector interface {
-	Path() (*Path, error)
+	Path() *Path
 	SetPaths([]*Path)
 	OnPathDown(*Path, PathInterface)
 }
@@ -185,14 +184,14 @@ type DefaultSelector struct {
 	currentFingerprint pathFingerprint
 }
 
-func (s *DefaultSelector) Path() (*Path, error) {
+func (s *DefaultSelector) Path() *Path {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	if len(s.paths) == 0 {
-		return nil, errNoPath
+		return nil
 	}
-	return s.paths[s.current], nil
+	return s.paths[s.current]
 }
 
 func (s *DefaultSelector) SetPolicy(policy Policy) {

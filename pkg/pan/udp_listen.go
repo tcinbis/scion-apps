@@ -37,7 +37,7 @@ import (
 var errBadDstAddress error = errors.New("dst address not a UDPAddr")
 
 type UnconnectedSelector interface {
-	ReplyPath(src, dst UDPAddr) (*Path, error)
+	ReplyPath(src, dst UDPAddr) *Path
 	OnPacketReceived(src, dst UDPAddr, path *Path)
 	OnPathDown(*Path, PathInterface)
 }
@@ -83,7 +83,7 @@ func (c *unconnectedConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	return n, remote, err
 }
 
-// XXX: expose this
+// XXX: expose or remove this? :/
 func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	n, remote, fwPath, err := c.scionUDPConn.readMsg(b)
 	if err != nil {
@@ -98,11 +98,18 @@ func (c *unconnectedConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	if !ok {
 		return 0, errBadDstAddress
 	}
-	path, err := c.selector.ReplyPath(c.local, sdst)
-	if err != nil {
-		return 0, err
+	var path *Path
+	if c.local.IA != sdst.IA {
+		path = c.selector.ReplyPath(c.local, sdst)
+		if path == nil {
+			return 0, errNoPath
+		}
 	}
-	return c.scionUDPConn.writeMsg(c.local, sdst, path, b)
+	return c.WriteToPath(b, sdst, path)
+}
+
+func (c *unconnectedConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
+	return c.scionUDPConn.writeMsg(c.local, dst, path, b)
 }
 
 func (c *unconnectedConn) Close() error {
@@ -142,15 +149,12 @@ func NewDefaultReplySelector() *DefaultReplySelector {
 	}
 }
 
-func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) (*Path, error) {
-	if src.IA == dst.IA {
-		return nil, nil
-	}
+func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	paths, ok := s.replyPath[makeKey(dst)]
 	if !ok || len(paths) == 0 {
-		return nil, errNoPath
+		return nil
 	}
 	mostRecent := 0
 	for i := 1; i < len(paths); i++ {
@@ -159,7 +163,7 @@ func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) (*Path, error) {
 			mostRecent = i
 		}
 	}
-	return paths[mostRecent].path, nil
+	return paths[mostRecent].path
 }
 
 func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
