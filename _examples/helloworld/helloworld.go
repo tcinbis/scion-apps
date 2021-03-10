@@ -48,7 +48,7 @@ func main() {
 }
 
 func runServer(port int) error {
-	conn, err := pan.ListenPUDP(context.Background(), &net.UDPAddr{Port: port})
+	conn, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: port}, nil)
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,8 @@ func runServer(port int) error {
 	for {
 		n, from, err := conn.ReadFrom(buffer)
 		if err != nil {
-			return err
+			fmt.Println(err)
+			continue
 		}
 		data := buffer[:n]
 		fmt.Printf("Received %s: %s\n", from, data)
@@ -74,7 +75,7 @@ func runClient(address string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pan.DialPUDP(context.Background(), nil, addr, nil)
+	conn, err := pan.DialUDP(context.Background(), nil, addr, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -86,13 +87,15 @@ func runClient(address string) error {
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
-				return
+				fmt.Println(err)
+				continue
 			}
 			data := buffer[:n]
 			fmt.Printf("Received reply: %s\n", data)
 		}
 	}()
 	for i := 0; i < 10; i++ {
+		//nBytes, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
 		nBytes, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
 		if err != nil {
 			return err

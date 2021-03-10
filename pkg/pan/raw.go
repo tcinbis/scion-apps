@@ -16,7 +16,9 @@ package pan
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,10 +33,8 @@ type pathDownHandler interface {
 	OnPathDown(*Path, PathInterface)
 }
 
-// openScionPacketConn opens new raw SCION UDP conn.
-// XXX: I'd prefer to make this onPathDown more explicit, but currently it
-// _must_ be in the SCMP handler it seems.
-func openScionPacketConn(ctx context.Context, local *net.UDPAddr,
+// openBaseUDPConn opens new raw SCION UDP conn.
+func openBaseUDPConn(ctx context.Context, local *net.UDPAddr,
 	onPathDown pathDownHandler) (snet.PacketConn, UDPAddr, error) {
 
 	dispatcher := host().dispatcher
@@ -44,8 +44,7 @@ func openScionPacketConn(ctx context.Context, local *net.UDPAddr,
 	if err != nil {
 		return nil, UDPAddr{}, err
 	}
-
-	conn := snet.NewSCIONPacketConn(rconn, &pathDownSCMPHandler{onPathDown}, true)
+	conn := snet.NewSCIONPacketConn(rconn, &scmpHandler{onPathDown}, true)
 	slocal := UDPAddr{
 		IA:   ia,
 		IP:   local.IP,
@@ -54,10 +53,11 @@ func openScionPacketConn(ctx context.Context, local *net.UDPAddr,
 	return conn, slocal, nil
 }
 
-// XXX: rename to baseUDPConn?
-// scionUDPConn contains the shared read and write code for different connection interfaces.
-// Currently this just wraps snet.SCIONPacketConn.
-type scionUDPConn struct {
+// baseUDPConn contains the common message read/write logic for different the
+// UDP porcelains (dialedConn and listenConn).
+// Currently this wraps snet.PacketConn/snet.SCIONPacketConn, but this logic
+// could easily be moved here too.
+type baseUDPConn struct {
 	raw         snet.PacketConn
 	readMutex   sync.Mutex
 	readBuffer  snet.Bytes
@@ -65,19 +65,19 @@ type scionUDPConn struct {
 	writeBuffer snet.Bytes
 }
 
-func (c *scionUDPConn) SetDeadline(t time.Time) error {
+func (c *baseUDPConn) SetDeadline(t time.Time) error {
 	return c.raw.SetDeadline(t)
 }
 
-func (c *scionUDPConn) SetReadDeadline(t time.Time) error {
+func (c *baseUDPConn) SetReadDeadline(t time.Time) error {
 	return c.raw.SetReadDeadline(t)
 }
 
-func (c *scionUDPConn) SetWriteDeadline(t time.Time) error {
+func (c *baseUDPConn) SetWriteDeadline(t time.Time) error {
 	return c.raw.SetWriteDeadline(t)
 }
 
-func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
+func (c *baseUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
 
 	// assert:
 	if src.IA != path.Source {
@@ -130,11 +130,10 @@ func (c *scionUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, er
 	return len(b), nil
 }
 
-// readPkt is a helper for reading a single packet.
+// readMsg is a helper for reading a single packet.
 // Internally invokes the configured SCMP handler.
 // Ignores non-UDP packets.
-// Returns
-func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
+func (c *baseUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 	c.readMutex.Lock()
 	defer c.readMutex.Unlock()
 	for {
@@ -144,6 +143,16 @@ func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 		var lastHop net.UDPAddr
 		err := c.raw.ReadFrom(&pkt, &lastHop)
 		if err != nil {
+			// XXX: hack, snet does not properly parse all SCMP types; just do *something*
+			if strings.HasPrefix(err.Error(), "decoding packet\n    unhandled SCMP type") {
+				// cant get this out without parsing the string
+				err = SCMPError{
+					typeCode: slayers.CreateSCMPTypeCode(
+						slayers.SCMPTypeParameterProblem,
+						slayers.SCMPCodeInvalidPacketSize,
+					),
+				}
+			}
 			return 0, UDPAddr{}, ForwardingPath{}, err
 		}
 		udp, ok := pkt.Payload.(snet.UDPPayload)
@@ -164,24 +173,16 @@ func (c *scionUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 	}
 }
 
-func (c *scionUDPConn) Close() error {
+func (c *baseUDPConn) Close() error {
 	return c.raw.Close()
 }
 
-type pathDownSCMPHandler struct {
+type scmpHandler struct {
 	pathDownHandler pathDownHandler
 }
 
-func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
+func (h *scmpHandler) Handle(pkt *snet.Packet) error {
 	scmp := pkt.Payload.(snet.SCMPPayload)
-	path, err := reversePathFromForwardingPath(
-		IA(pkt.Source.IA),
-		IA(pkt.Destination.IA),
-		ForwardingPath{spath: pkt.Path},
-	)
-	if err != nil {
-		return err
-	}
 	switch scmp.Type() {
 	case slayers.SCMPTypeExternalInterfaceDown:
 		msg := pkt.Payload.(snet.SCMPExternalInterfaceDown)
@@ -189,7 +190,7 @@ func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 			IA:   IA(msg.IA),
 			IfID: IfID(msg.Interface),
 		}
-		h.pathDownHandler.OnPathDown(path, pi) // XXX: forwarding path!!
+		h.pathDownHandler.OnPathDown(nil, pi)
 		return nil
 	case slayers.SCMPTypeInternalConnectivityDown:
 		msg := pkt.Payload.(snet.SCMPInternalConnectivityDown)
@@ -197,10 +198,39 @@ func (h *pathDownSCMPHandler) Handle(pkt *snet.Packet) error {
 			IA:   IA(msg.IA),
 			IfID: IfID(msg.Egress),
 		}
-		h.pathDownHandler.OnPathDown(path, pi) // XXX: forwarding path!!
+		h.pathDownHandler.OnPathDown(nil, pi)
 		return nil
 	default:
-		// TODO: OpError for other SCMPs!
-		return nil
+		return SCMPError{
+			typeCode: slayers.CreateSCMPTypeCode(scmp.Type(), scmp.Code()),
+			ErrorIA:  IA(pkt.Source.IA),
+			ErrorIP:  append(net.IP{}, pkt.Source.Host.IP()...),
+		}
 	}
+}
+
+type SCMPError struct {
+	typeCode slayers.SCMPTypeCode
+	// ErrorIA is the source IA of the SCMP error message
+	ErrorIA IA
+	// ErrorIP is the source IP of the SCMP error message
+	ErrorIP net.IP
+	// TODO: include quote information (pkt destinition, path, ...)
+}
+
+func (e SCMPError) Error() string {
+	return fmt.Sprintf("SCMP %s from %s,%s", e.typeCode.String(), e.ErrorIA, e.ErrorIP)
+}
+
+func (e SCMPError) Temporary() bool {
+	switch e.typeCode.Type() {
+	case slayers.SCMPTypeDestinationUnreachable:
+	case slayers.SCMPTypePacketTooBig:
+	case slayers.SCMPTypeParameterProblem:
+		return false
+	case slayers.SCMPTypeExternalInterfaceDown:
+	case slayers.SCMPTypeInternalConnectivityDown:
+		return true
+	}
+	panic("invalid error code")
 }

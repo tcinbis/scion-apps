@@ -77,7 +77,7 @@ func (c *unconnectedPUDPConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	}
 	path, header := c.controller.decide(c.local, sdst)
 	msg := append(header, b...)
-	return c.scionUDPConn.writeMsg(c.local, sdst, path, msg)
+	return c.baseUDPConn.writeMsg(c.local, sdst, path, msg)
 }
 
 func (c *unconnectedPUDPConn) Close() error {

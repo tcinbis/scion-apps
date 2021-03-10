@@ -47,7 +47,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 		selector = &DefaultSelector{}
 	}
 
-	raw, slocal, err := openScionPacketConn(ctx, local, selector)
+	raw, slocal, err := openBaseUDPConn(ctx, local, selector)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 		}
 	}
 	return &dialedConn{
-		scionUDPConn: scionUDPConn{
+		baseUDPConn: baseUDPConn{
 			raw: raw,
 		},
 		local:      slocal,
@@ -71,7 +71,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 }
 
 type dialedConn struct {
-	scionUDPConn
+	baseUDPConn
 
 	local      UDPAddr
 	remote     UDPAddr
@@ -99,16 +99,16 @@ func (c *dialedConn) Write(b []byte) (int, error) {
 			return 0, errNoPathTo(c.remote.IA)
 		}
 	}
-	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
+	return c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
 }
 
 func (c *dialedConn) WritePath(path *Path, b []byte) (int, error) {
-	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
+	return c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
 }
 
 func (c *dialedConn) Read(b []byte) (int, error) {
 	for {
-		n, remote, _, err := c.scionUDPConn.readMsg(b)
+		n, remote, _, err := c.baseUDPConn.readMsg(b)
 		if err != nil {
 			return n, err
 		}
@@ -121,7 +121,7 @@ func (c *dialedConn) Read(b []byte) (int, error) {
 
 func (c *dialedConn) ReadPath(b []byte) (int, *Path, error) {
 	for {
-		n, remote, fwPath, err := c.scionUDPConn.readMsg(b)
+		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 		if err != nil {
 			return n, nil, err
 		}
@@ -138,7 +138,7 @@ func (c *dialedConn) ReadPath(b []byte) (int, *Path, error) {
 
 func (c *dialedConn) Close() error {
 	_ = c.subscriber.Close()
-	return c.scionUDPConn.Close()
+	return c.baseUDPConn.Close()
 }
 
 //////////////////// subscriber

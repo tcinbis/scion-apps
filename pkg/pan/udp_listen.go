@@ -53,12 +53,12 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	if selector == nil {
 		selector = NewDefaultReplySelector()
 	}
-	raw, slocal, err := openScionPacketConn(ctx, local, selector)
+	raw, slocal, err := openBaseUDPConn(ctx, local, selector)
 	if err != nil {
 		return nil, err
 	}
 	return &unconnectedConn{
-		scionUDPConn: scionUDPConn{
+		baseUDPConn: baseUDPConn{
 			raw: raw,
 		},
 		local:    slocal,
@@ -67,7 +67,7 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 }
 
 type unconnectedConn struct {
-	scionUDPConn
+	baseUDPConn
 
 	local    UDPAddr
 	selector UnconnectedSelector
@@ -85,7 +85,7 @@ func (c *unconnectedConn) ReadFrom(b []byte) (int, net.Addr, error) {
 
 // XXX: expose or remove this? :/
 func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
-	n, remote, fwPath, err := c.scionUDPConn.readMsg(b)
+	n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 	if err != nil {
 		return n, UDPAddr{}, nil, err
 	}
@@ -109,11 +109,11 @@ func (c *unconnectedConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 }
 
 func (c *unconnectedConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
-	return c.scionUDPConn.writeMsg(c.local, dst, path, b)
+	return c.baseUDPConn.writeMsg(c.local, dst, path, b)
 }
 
 func (c *unconnectedConn) Close() error {
-	return c.scionUDPConn.Close()
+	return c.baseUDPConn.Close()
 }
 
 var _ UnconnectedSelector = &DefaultReplySelector{}
