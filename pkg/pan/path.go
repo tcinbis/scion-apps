@@ -22,7 +22,6 @@ import (
 
 	"github.com/scionproto/scion/go/lib/slayers/path"
 	"github.com/scionproto/scion/go/lib/slayers/path/scion"
-	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath"
 )
 
@@ -52,12 +51,12 @@ func (p *Path) Copy() *Path {
 }
 
 func (p *Path) String() string {
-	// TODO: if p.Metadata != nil { return p.Interfaces.String() }
-	return string(p.Fingerprint)
+	if p.Metadata != nil {
+		return p.Metadata.fmtInterfaces()
+	} else {
+		return string(p.Fingerprint)
+	}
 }
-
-type GeoCoordinates = snet.GeoCoordinates
-type LinkType = snet.LinkType
 
 // XXX: remove
 func pathDestination(p *Path) IA {
@@ -233,10 +232,10 @@ func pathSequenceFromInterfaces(interfaces []PathInterface) pathSequence {
 // Fingerprint returns the pathSequence as a comparable/hashable object (string).
 func (s pathSequence) Fingerprint() PathFingerprint {
 	// XXX: currently somewhat human readable, could do simple binary
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s", s.Source, s.Destination)
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "%s %s", s.Source, s.Destination)
 	for _, ifID := range s.InterfaceIDs {
-		fmt.Fprintf(&b, " %d", ifID)
+		fmt.Fprintf(b, " %d", ifID)
 	}
 	return PathFingerprint(b.String())
 }

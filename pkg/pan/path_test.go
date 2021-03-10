@@ -22,6 +22,59 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestPathString(t *testing.T) {
+	asA := IA{I: 1, A: 0xff00_0000_000a}
+	asB := IA{I: 1, A: 0xff00_0000_000b}
+	asC := IA{I: 1, A: 0xff00_0000_000c}
+
+	ifA1 := PathInterface{IA: asA, IfID: 1}
+	ifB1 := PathInterface{IA: asB, IfID: 11}
+	ifB2 := PathInterface{IA: asB, IfID: 22}
+	ifC2 := PathInterface{IA: asC, IfID: 2}
+
+	const testFingerprint = "test-fingerprint"
+
+	cases := []struct {
+		name       string
+		interfaces []PathInterface
+		expected   string
+	}{
+		{
+			name:       "no metadata",
+			interfaces: nil,
+			expected:   testFingerprint,
+		},
+		{
+			name:       "empty",
+			interfaces: []PathInterface{},
+			expected:   "",
+		},
+		{
+			name:       "one hop",
+			interfaces: []PathInterface{ifA1, ifB1},
+			expected:   "1-ff00:0:a 1>11 1-ff00:0:b",
+		},
+		{
+			name:       "two hops",
+			interfaces: []PathInterface{ifA1, ifB1, ifB2, ifC2},
+			expected:   "1-ff00:0:a 1>11 1-ff00:0:b 22>2 1-ff00:0:c",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var m *PathMetadata
+			if c.interfaces != nil {
+				m = &PathMetadata{
+					Interfaces: c.interfaces,
+				}
+			}
+			p := &Path{Metadata: m, Fingerprint: testFingerprint}
+			actual := p.String()
+			assert.Equal(t, c.expected, actual)
+		})
+	}
+}
+
 func TestInterfacesFromDecoded(t *testing.T) {
 	// Not a great test case...
 	rawPath := []byte("\x00\x00\x20\x80\x00\x00\x01\x11\x00\x00\x01\x00\x01\x00\x02\x22\x00\x00" +
@@ -40,7 +93,6 @@ func TestInterfacesFromDecoded(t *testing.T) {
 }
 
 func TestLowerLatency(t *testing.T) {
-
 	unknown := time.Duration(0)
 
 	asA := IA{I: 1, A: 1}
@@ -193,5 +245,4 @@ func TestLowerLatency(t *testing.T) {
 			assert.Equal(t, result{expectedReverseLess, c.ok}, result{rLess, rOk})
 		})
 	}
-
 }

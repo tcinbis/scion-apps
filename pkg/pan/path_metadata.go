@@ -14,7 +14,13 @@
 
 package pan
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/scionproto/scion/go/lib/snet"
+)
 
 type PathInterface struct {
 	IA   IA
@@ -68,6 +74,9 @@ type PathMetadata struct {
 	Notes []string
 }
 
+type GeoCoordinates = snet.GeoCoordinates
+type LinkType = snet.LinkType
+
 func (pm *PathMetadata) Copy() *PathMetadata {
 	if pm == nil {
 		return nil
@@ -118,6 +127,23 @@ func (pm *PathMetadata) latencySum() (time.Duration, pathHopSet) {
 		}
 	}
 	return sum, unknown
+}
+
+func (pm *PathMetadata) fmtInterfaces() string {
+	if len(pm.Interfaces) == 0 {
+		return ""
+	}
+	b := &strings.Builder{}
+	intf := pm.Interfaces[0]
+	fmt.Fprintf(b, "%s %d", intf.IA, intf.IfID)
+	for i := 1; i < len(pm.Interfaces)-1; i += 2 {
+		inIntf := pm.Interfaces[i]
+		outIntf := pm.Interfaces[i+1]
+		fmt.Fprintf(b, ">%d %s %d", inIntf.IfID, inIntf.IA, outIntf.IfID)
+	}
+	intf = pm.Interfaces[len(pm.Interfaces)-1]
+	fmt.Fprintf(b, ">%d %s", intf.IfID, intf.IA)
+	return b.String()
 }
 
 type pathHop struct {
