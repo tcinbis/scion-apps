@@ -29,9 +29,8 @@ func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Po
 	controller := &pudpController{
 		maxRace: 5, // XXX
 		stop:    make(chan struct{}),
-		policy:  policy,
 	}
-	udpConn, err := DialUDP(ctx, local, remote, controller)
+	udpConn, err := DialUDP(ctx, local, remote, policy, controller)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +54,7 @@ func (c *connectedPUDPConn) Write(b []byte) (int, error) {
 		fmt.Println(paths)
 	}
 	for _, path := range paths {
-		c.connectedConn.WritePath(path, msg)
+		_, _ = c.connectedConn.WritePath(path, msg)
 	}
 	return len(b), nil // XXX?
 }
@@ -93,13 +92,10 @@ type pudpController struct {
 	probeInterval time.Duration
 	probeWindow   time.Duration
 
-	policy     Policy
-	unfiltered []*Path
-	paths      []*Path // XXX: active set?
-	current    *Path
+	paths   []*Path // XXX: active set?
+	current *Path
 
-	requestedRemoteIdentifier bool
-	remoteIdentifier          []IfID
+	remoteIdentifier []IfID
 
 	raceSequenceNum uint16
 	pingSequenceNum uint16
@@ -137,6 +133,7 @@ func (c *pudpController) decide() ([]*Path, []byte) {
 			header.identify()
 		}
 	} else {
+		// TODO
 		// ping if in window?
 	}
 	header.buf.WriteByte(byte(pudpHeaderPayload))
@@ -146,9 +143,7 @@ func (c *pudpController) decide() ([]*Path, []byte) {
 func (c *pudpController) SetPaths(paths []*Path) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.unfiltered = paths
-	c.paths = c.filterPaths(paths)
-
+	c.paths = filterPathsByLastHopInterface(paths, c.remoteIdentifier)
 	// TODO reset c.current! Set current again or switch path
 }
 
@@ -160,6 +155,7 @@ func (c *pudpController) OnPathDown(path *Path, pi PathInterface) {
 
 	if c.current != nil &&
 		(isInterfaceOnPath(c.current, pi) || path.Fingerprint == c.current.Fingerprint) {
+		// TODO
 		//	fmt.Println("failover:", s.current, len(s.paths))
 	}
 }
@@ -192,14 +188,6 @@ func (c *pudpController) Close() error {
 	return nil
 }
 
-func (c *pudpController) filterPaths(paths []*Path) []*Path {
-	paths = filterPathsByLastHopInterface(paths, c.remoteIdentifier)
-	if c.policy != nil {
-		return c.policy.Filter(paths)
-	}
-	return paths
-}
-
 func (c *pudpController) registerPacket(path *Path, identifier []IfID,
 	pongSequenceNum interface{}) error {
 
@@ -209,7 +197,7 @@ func (c *pudpController) registerPacket(path *Path, identifier []IfID,
 	// Register first remote identifier; effectively, pick an anycast instance
 	if c.remoteIdentifier == nil && identifier != nil {
 		c.remoteIdentifier = identifier
-		c.paths = c.filterPaths(c.unfiltered)
+		c.paths = filterPathsByLastHopInterface(c.paths, c.remoteIdentifier)
 	} else if c.remoteIdentifier != nil && identifier != nil {
 		// if we've previously seen a remote identifier, drop the packet if this
 		// does not match (response from a different anycast instance)

@@ -25,31 +25,80 @@ import (
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 )
 
-// closerSession is a wrapper around quic.Session that always closes the
+// QUICSession is a wrapper around quic.Session that always closes the
 // underlying conn when closing the session.
 // This is needed here because we use quic.Dial, not quic.DialAddr but we want
 // the close-the-socket behaviour of quic.DialAddr.
-type closerSession struct {
+type QUICSession struct {
 	quic.Session
-	conn net.Conn
+	Conn *connectedConn // XXX: interface?
 }
 
-func (s *closerSession) CloseWithError(code quic.ErrorCode, desc string) error {
+func (s *QUICSession) CloseWithError(code quic.ErrorCode, desc string) error {
 	err := s.Session.CloseWithError(code, desc)
-	s.conn.Close()
+	s.Conn.Close()
 	return err
 }
 
-// closerEarlySession is a wrapper around quic.EarlySession, analogous to closerSession
-type closerEarlySession struct {
+func (s *QUICSession) SetPolicy(policy Policy) {
+	s.Conn.SetPolicy(policy)
+}
+
+// QUICEarlySession is a wrapper around quic.EarlySession, analogous to closerSession
+type QUICEarlySession struct {
 	quic.EarlySession
-	conn net.Conn
+	Conn *connectedConn
 }
 
-func (s *closerEarlySession) CloseWithError(code quic.ErrorCode, desc string) error {
+func (s *QUICEarlySession) CloseWithError(code quic.ErrorCode, desc string) error {
 	err := s.EarlySession.CloseWithError(code, desc)
-	s.conn.Close()
+	s.Conn.Close()
 	return err
+}
+
+func (s *QUICEarlySession) SetPolicy(policy Policy) {
+	s.Conn.SetPolicy(policy)
+}
+
+// DialAddr establishes a new QUIC connection to a server at the remote address.
+//
+// If no path is specified in raddr, DialAddr will choose the first available path,
+// analogous to appnet.DialAddr.
+// The host parameter is used for SNI.
+// The tls.Config must define an application protocol (using NextProtos).
+func DialQUIC(ctx context.Context,
+	local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector,
+	host string, tlsConf *tls.Config, quicConf *quic.Config) (*QUICSession, error) {
+
+	conn, err := DialUDP(ctx, local, remote, policy, selector)
+	if err != nil {
+		return nil, err
+	}
+	pconn := connectedPacketConn{conn}
+	host = appnet.MangleSCIONAddr(host)
+	session, err := quic.DialContext(ctx, pconn, remote, host, tlsConf, quicConf)
+	if err != nil {
+		return nil, err
+	}
+	return &QUICSession{session, conn.(*connectedConn)}, nil
+}
+
+// DialAddrEarly establishes a new 0-RTT QUIC connection to a server. Analogous to DialAddr.
+func DialQUICEarly(ctx context.Context,
+	local *net.UDPAddr, remote UDPAddr, policy Policy, selector Selector,
+	host string, tlsConf *tls.Config, quicConf *quic.Config) (*QUICEarlySession, error) {
+
+	conn, err := DialUDP(ctx, local, remote, policy, selector)
+	if err != nil {
+		return nil, err
+	}
+	pconn := connectedPacketConn{conn}
+	host = appnet.MangleSCIONAddr(host)
+	session, err := quic.DialEarlyContext(ctx, pconn, remote, host, tlsConf, quicConf)
+	if err != nil {
+		return nil, err
+	}
+	return &QUICEarlySession{session, conn.(*connectedConn)}, nil
 }
 
 // connectedPacketConn wraps a Conn into a PacketConn interface. net makes a weird mess
@@ -65,46 +114,4 @@ func (c connectedPacketConn) WriteTo(b []byte, to net.Addr) (int, error) {
 func (c connectedPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, err := c.Read(b)
 	return n, c.RemoteAddr(), err
-}
-
-// DialAddr establishes a new QUIC connection to a server at the remote address.
-//
-// If no path is specified in raddr, DialAddr will choose the first available path,
-// analogous to appnet.DialAddr.
-// The host parameter is used for SNI.
-// The tls.Config must define an application protocol (using NextProtos).
-func DialQUIC(ctx context.Context,
-	local *net.UDPAddr, remote UDPAddr, selector Selector,
-	host string, tlsConf *tls.Config, quicConf *quic.Config) (quic.Session, error) {
-
-	conn, err := DialUDP(ctx, local, remote, selector)
-	if err != nil {
-		return nil, err
-	}
-	pconn := connectedPacketConn{conn}
-	host = appnet.MangleSCIONAddr(host)
-	session, err := quic.DialContext(ctx, pconn, remote, host, tlsConf, quicConf)
-	if err != nil {
-		return nil, err
-	}
-	return &closerSession{session, pconn}, nil
-}
-
-// DialAddrEarly establishes a new 0-RTT QUIC connection to a server. Analogous to DialAddr.
-func DialQUICEarly(ctx context.Context,
-	local *net.UDPAddr, remote UDPAddr, selector Selector,
-	host string, tlsConf *tls.Config, quicConf *quic.Config) (quic.EarlySession, error) {
-
-	conn, err := DialUDP(ctx, local, remote, selector)
-	if err != nil {
-		return nil, err
-	}
-	pconn := connectedPacketConn{conn}
-	host = appnet.MangleSCIONAddr(host)
-	session, err := quic.DialEarlyContext(ctx, pconn, remote, host, tlsConf, quicConf)
-	if err != nil {
-		return nil, err
-	}
-	// XXX(matzf): quic.DialEarly seems to have the wrong return type declared (quic.DialAddrEarly returns EarlySession)
-	return &closerEarlySession{session.(quic.EarlySession), pconn}, nil
 }

@@ -42,9 +42,6 @@ func main() {
 		pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
 			return paths[:3]
 		}),
-		&pan.InteractiveSelection{
-			Prompter: pan.CommandlinePrompter{},
-		},
 	}
 	// Create a standard server with our custom RoundTripper
 	c := &http.Client{

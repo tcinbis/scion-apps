@@ -106,6 +106,11 @@ import (
 
 // XXX: leaking addr
 type IA addr.IA
+
+func (ia IA) String() string {
+	return addr.IA(ia).String()
+}
+
 type IfID uint64
 
 // NOTE: does _NOT_ contain path
@@ -125,9 +130,9 @@ func (a UDPAddr) String() string {
 	//   isd-as-ipv4:port
 	//   [isd-as-ipv6]:port (who cares about zones anyway?)
 	if a.IP.To4() == nil {
-		return fmt.Sprintf("%s,[%s]:%d", a.IA, a.IP, a.Port) // XXX: use snet stuff?
+		return fmt.Sprintf("%s,[%s]:%d", a.IA, a.IP, a.Port)
 	} else {
-		return fmt.Sprintf("%s,%s:%d", a.IA, a.IP, a.Port) // XXX: use snet stuff?
+		return fmt.Sprintf("%s,%s:%d", a.IA, a.IP, a.Port)
 	}
 }
 

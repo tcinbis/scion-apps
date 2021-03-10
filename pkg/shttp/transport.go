@@ -33,9 +33,9 @@ import (
 // RoundTripper implements the RoundTripper interface. It wraps a
 // http3.RoundTripper to make connections over SCION.
 type RoundTripper struct {
-	rt        *http3.RoundTripper
-	policy    pan.Policy
-	selectors []*pan.DefaultSelector
+	rt       *http3.RoundTripper
+	policy   pan.Policy
+	sessions []*pan.QUICEarlySession
 }
 
 // dialFunc is the function type supported in http3.RoundTripper.Dial
@@ -70,9 +70,6 @@ func (t *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.rt.RoundTrip(&cpy)
 }
 
-// TODO:
-// SetSelector / SetPolicy
-
 // Close closes the QUIC connections that this RoundTripper has used
 func (t *RoundTripper) Close() (err error) {
 	if t.rt != nil {
@@ -97,17 +94,20 @@ func (t *RoundTripper) dialer() dialFunc {
 		if err != nil {
 			panic("parse error after already parsing successfully once, should not happen")
 		}
-		selector := &pan.DefaultSelector{Policy: t.policy}
-		t.selectors = append(t.selectors, selector)
-		return pan.DialQUICEarly(context.Background(),
-			nil, addr, selector,
+		session, err := pan.DialQUICEarly(context.Background(),
+			nil, addr, t.policy, nil,
 			hostname, tlsCfg, cfg)
+		if err != nil {
+			return nil, err
+		}
+		t.sessions = append(t.sessions, session)
+		return session, err
 	}
 }
 
 func (t *RoundTripper) SetPolicy(policy pan.Policy) {
 	t.policy = policy
-	for _, s := range t.selectors {
+	for _, s := range t.sessions {
 		s.SetPolicy(policy)
 	}
 }

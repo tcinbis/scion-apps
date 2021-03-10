@@ -25,7 +25,8 @@ import (
 // XXX: export errors, also generally revisit error wrapping/handling
 var errNoPath error = errors.New("no path")
 
-func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, selector Selector) (net.Conn, error) {
+func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
+	policy Policy, selector Selector) (net.Conn, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -43,7 +44,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, selector S
 	// XXX: dont do this for dst in local IA!
 	var subscriber *pathRefreshSubscriber
 	if remote.IA != slocal.IA {
-		subscriber, err = openPathRefreshSubscriber(ctx, remote, selector)
+		subscriber, err = openPathRefreshSubscriber(ctx, remote, policy, selector)
 		if err != nil {
 			return nil, err
 		}
@@ -68,6 +69,10 @@ type connectedConn struct {
 	remote     UDPAddr
 	subscriber *pathRefreshSubscriber
 	Selector   Selector
+}
+
+func (c *connectedConn) SetPolicy(policy Policy) {
+	c.subscriber.setPolicy(policy)
 }
 
 func (c *connectedConn) LocalAddr() net.Addr {
@@ -137,19 +142,23 @@ type pathSetter interface {
 
 type pathRefreshSubscriber struct {
 	remote UDPAddr
+	policy Policy
 	target pathSetter
 }
 
-func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, target pathSetter) (*pathRefreshSubscriber, error) {
+func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, policy Policy,
+	target pathSetter) (*pathRefreshSubscriber, error) {
+
 	s := &pathRefreshSubscriber{
 		target: target,
+		policy: policy,
 		remote: remote,
 	}
 	paths, err := pool.subscribe(ctx, remote.IA, s)
 	if err != nil {
 		return nil, nil
 	}
-	s.target.SetPaths(paths)
+	s.setFiltered(paths)
 	return s, nil
 }
 
@@ -160,7 +169,19 @@ func (s *pathRefreshSubscriber) Close() error {
 	return nil
 }
 
+func (s *pathRefreshSubscriber) setPolicy(policy Policy) {
+	s.policy = policy
+	s.setFiltered(pool.cachedPaths(s.remote.IA))
+}
+
 func (s *pathRefreshSubscriber) refresh(dst IA, paths []*Path) {
+	s.setFiltered(paths)
+}
+
+func (s *pathRefreshSubscriber) setFiltered(paths []*Path) {
+	if s.policy != nil {
+		paths = s.policy.Filter(paths)
+	}
 	s.target.SetPaths(paths)
 }
 
@@ -175,9 +196,7 @@ type Selector interface {
 }
 
 type DefaultSelector struct {
-	Policy             Policy
 	mutex              sync.Mutex
-	unfiltered         []*Path
 	paths              []*Path
 	current            int
 	currentFingerprint PathFingerprint
@@ -193,26 +212,11 @@ func (s *DefaultSelector) Path() *Path {
 	return s.paths[s.current]
 }
 
-func (s *DefaultSelector) SetPolicy(policy Policy) {
-	s.mutex.Lock()
-	s.Policy = policy
-	s.mutex.Unlock()
-	if s.unfiltered != nil {
-		s.SetPaths(s.unfiltered)
-	}
-}
-
 func (s *DefaultSelector) SetPaths(paths []*Path) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.unfiltered = paths
-	if s.Policy != nil {
-		s.paths = s.Policy.Filter(paths)
-	} else {
-		s.paths = s.unfiltered
-	}
-
+	s.paths = paths
 	curr := 0
 	if s.currentFingerprint != "" {
 		for i, p := range s.paths {

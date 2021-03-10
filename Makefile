@@ -12,7 +12,7 @@ DESTDIR = $(shell set -a; eval $$( go env ); gopath=$${GOPATH%:*}; echo $${GOBIN
 # HINT: build with TAGS=norains to build without rains support
 TAGS =
 
-all: lint build
+all: build lint
 
 build: scion-bat \
 	scion-bwtestclient scion-bwtestserver \

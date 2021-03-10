@@ -181,17 +181,17 @@ type pudpHeaderBuilder struct {
 
 func (b *pudpHeaderBuilder) race(seq uint16) {
 	b.buf.WriteByte(byte(pudpHeaderRace))
-	binary.Write(&b.buf, binary.BigEndian, seq)
+	_ = binary.Write(&b.buf, binary.BigEndian, seq)
 }
 
 func (b *pudpHeaderBuilder) ping(seq uint16) {
 	b.buf.WriteByte(byte(pudpHeaderPing))
-	binary.Write(&b.buf, binary.BigEndian, seq)
+	_ = binary.Write(&b.buf, binary.BigEndian, seq)
 }
 
 func (b *pudpHeaderBuilder) pong(seq uint16) {
 	b.buf.WriteByte(byte(pudpHeaderPong))
-	binary.Write(&b.buf, binary.BigEndian, seq)
+	_ = binary.Write(&b.buf, binary.BigEndian, seq)
 }
 
 func (b *pudpHeaderBuilder) identify() {
@@ -205,7 +205,7 @@ func (b *pudpHeaderBuilder) me(ifids []IfID) {
 	}
 	b.buf.WriteByte(byte(len(ifids)))
 	for _, ifid := range ifids {
-		binary.Write(&b.buf, binary.BigEndian, uint16(ifid))
+		_ = binary.Write(&b.buf, binary.BigEndian, uint16(ifid))
 	}
 }
 
