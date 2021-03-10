@@ -38,7 +38,7 @@ func (l closerListener) Close() error {
 // ListenPort listens for QUIC connections on a SCION/UDP port.
 //
 // See note on wildcard addresses in the appnet package documentation.
-func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector UnconnectedSelector,
+func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
 	tlsConf *tls.Config, quicConfig *quic.Config) (quic.Listener, error) {
 
 	conn, err := ListenUDP(ctx, local, selector)

@@ -43,6 +43,8 @@ const (
 
 	pathDownNotificationTimeout = 3 * time.Second
 
+	defaultSelectorMaxReplyPaths = 4
+
 	statsNumLatencySamples = 4
 )
 

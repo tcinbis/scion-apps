@@ -36,14 +36,16 @@ import (
 
 var errBadDstAddress error = errors.New("dst address not a UDPAddr")
 
-type UnconnectedSelector interface {
+// ReplySelector selects the reply path for WriteTo in a listenConn.
+type ReplySelector interface {
 	ReplyPath(src, dst UDPAddr) *Path
 	OnPacketReceived(src, dst UDPAddr, path *Path)
 	OnPathDown(*Path, PathInterface)
+	Close() error
 }
 
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
-	selector UnconnectedSelector) (net.PacketConn, error) {
+	selector ReplySelector) (net.PacketConn, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -57,7 +59,7 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	if err != nil {
 		return nil, err
 	}
-	return &unconnectedConn{
+	return &listenConn{
 		baseUDPConn: baseUDPConn{
 			raw: raw,
 		},
@@ -66,25 +68,24 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	}, nil
 }
 
-type unconnectedConn struct {
+type listenConn struct {
 	baseUDPConn
 
 	local    UDPAddr
-	selector UnconnectedSelector
+	selector ReplySelector
 }
 
-func (c *unconnectedConn) LocalAddr() net.Addr {
+func (c *listenConn) LocalAddr() net.Addr {
 	return c.local
 }
 
-func (c *unconnectedConn) ReadFrom(b []byte) (int, net.Addr, error) {
+func (c *listenConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, remote, path, err := c.ReadFromPath(b)
 	c.selector.OnPacketReceived(remote, c.local, path)
 	return n, remote, err
 }
 
-// XXX: expose or remove this? :/
-func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
+func (c *listenConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 	if err != nil {
 		return n, UDPAddr{}, nil, err
@@ -93,7 +94,7 @@ func (c *unconnectedConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	return n, remote, path, err
 }
 
-func (c *unconnectedConn) WriteTo(b []byte, dst net.Addr) (int, error) {
+func (c *listenConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	sdst, ok := dst.(UDPAddr)
 	if !ok {
 		return 0, errBadDstAddress
@@ -108,15 +109,59 @@ func (c *unconnectedConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	return c.WriteToPath(b, sdst, path)
 }
 
-func (c *unconnectedConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
+func (c *listenConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
 	return c.baseUDPConn.writeMsg(c.local, dst, path, b)
 }
 
-func (c *unconnectedConn) Close() error {
+func (c *listenConn) Close() error {
+	// XXX: multierror!
+	_ = c.selector.Close()
 	return c.baseUDPConn.Close()
 }
 
-var _ UnconnectedSelector = &DefaultReplySelector{}
+type DefaultReplySelector struct {
+	mtx     sync.RWMutex
+	remotes map[udpAddrKey]remoteEntry
+}
+
+func NewDefaultReplySelector() *DefaultReplySelector {
+	return &DefaultReplySelector{
+		remotes: make(map[udpAddrKey]remoteEntry),
+	}
+}
+
+func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) *Path {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	r, ok := s.remotes[makeKey(dst)]
+	if !ok || len(r.paths) == 0 {
+		return nil
+	}
+	return r.paths[0]
+}
+
+func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
+	if path == nil {
+		return
+	}
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	ksrc := makeKey(src)
+	r := s.remotes[ksrc]
+	r.seen = time.Now()
+	r.paths.insert(path, defaultSelectorMaxReplyPaths)
+	s.remotes[ksrc] = r
+}
+
+func (s *DefaultReplySelector) OnPathDown(*Path, PathInterface) {
+	// TODO: report to stats DB
+}
+
+func (s *DefaultReplySelector) Close() error {
+	return nil
+}
 
 type udpAddrKey struct {
 	IA   IA
@@ -133,62 +178,36 @@ func makeKey(a UDPAddr) udpAddrKey {
 	return k
 }
 
-type DefaultReplySelector struct {
-	mtx       sync.RWMutex
-	replyPath map[udpAddrKey][]replyPathEntry
+type remoteEntry struct {
+	paths pathsMRU
+	seen  time.Time
 }
 
-type replyPathEntry struct {
-	path *Path
-	seen time.Time
-}
+// pathsMRU is a list tracking the most recently used (inserted) path
+type pathsMRU []*Path
 
-func NewDefaultReplySelector() *DefaultReplySelector {
-	return &DefaultReplySelector{
-		replyPath: make(map[udpAddrKey][]replyPathEntry),
-	}
-}
-
-func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) *Path {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	paths, ok := s.replyPath[makeKey(dst)]
-	if !ok || len(paths) == 0 {
-		return nil
-	}
-	mostRecent := 0
-	for i := 1; i < len(paths); i++ {
-		// TODO check stats DB
-		if paths[i].seen.After(paths[mostRecent].seen) {
-			mostRecent = i
+func (p *pathsMRU) insert(path *Path, maxEntries int) {
+	paths := *p
+	i := 0
+	for ; i < len(paths); i++ {
+		if paths[i].Fingerprint == path.Fingerprint {
+			break
 		}
 	}
-	return paths[mostRecent].path
-}
-
-func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
-	if path == nil {
-		return
-	}
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	ksrc := makeKey(src)
-	paths := s.replyPath[ksrc]
-	for _, e := range paths {
-		if e.path.Fingerprint == path.Fingerprint {
-			e.path = path
-			e.seen = time.Now()
-			return
+	if i == len(paths) {
+		if len(paths) < maxEntries {
+			*p = append(paths, nil)
+			paths = *p
+		} else {
+			i = len(paths) - 1 // overwrite least recently used
 		}
 	}
-	s.replyPath[ksrc] = append(paths, replyPathEntry{
-		path: path,
-		seen: time.Now(),
-	})
-}
+	paths[i] = path
 
-func (s *DefaultReplySelector) OnPathDown(*Path, PathInterface) {
-	// TODO: report to stats DB
+	// move most-recently-used to front
+	if i != 0 {
+		pi := paths[i]
+		copy(paths[1:i+1], paths[0:i])
+		paths[0] = pi
+	}
 }

@@ -39,20 +39,20 @@ func ListenPUDP(ctx context.Context, local *net.UDPAddr) (net.PacketConn, error)
 	}
 	go controller.Run()
 	return &unconnectedPUDPConn{
-		unconnectedConn: udpConn.(*unconnectedConn),
-		controller:      controller,
+		listenConn: udpConn.(*listenConn),
+		controller: controller,
 	}, nil
 }
 
 type unconnectedPUDPConn struct {
-	*unconnectedConn // XXX: not sure this is a good idea. Maybe just base it on the scionUDPConn directly
+	*listenConn // XXX: not sure this is a good idea. Maybe just base it on the scionUDPConn directly
 
 	controller *pudpListenerController
 }
 
 func (c *unconnectedPUDPConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	for {
-		nr, remote, path, err := c.unconnectedConn.ReadFromPath(b)
+		nr, remote, path, err := c.listenConn.ReadFromPath(b)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -82,7 +82,7 @@ func (c *unconnectedPUDPConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 
 func (c *unconnectedPUDPConn) Close() error {
 	c.controller.Close()
-	return c.unconnectedConn.Close()
+	return c.listenConn.Close()
 }
 
 type pudpListenerController struct {
