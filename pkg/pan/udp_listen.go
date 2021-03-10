@@ -102,7 +102,7 @@ func (c *unconnectedConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	if c.local.IA != sdst.IA {
 		path = c.selector.ReplyPath(c.local, sdst)
 		if path == nil {
-			return 0, errNoPath
+			return 0, errNoPathTo(sdst.IA)
 		}
 	}
 	return c.WriteToPath(b, sdst, path)

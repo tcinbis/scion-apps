@@ -31,7 +31,7 @@ import (
 // the close-the-socket behaviour of quic.DialAddr.
 type QUICSession struct {
 	quic.Session
-	Conn *connectedConn // XXX: interface?
+	Conn Conn
 }
 
 func (s *QUICSession) CloseWithError(code quic.ErrorCode, desc string) error {
@@ -47,7 +47,7 @@ func (s *QUICSession) SetPolicy(policy Policy) {
 // QUICEarlySession is a wrapper around quic.EarlySession, analogous to closerSession
 type QUICEarlySession struct {
 	quic.EarlySession
-	Conn *connectedConn
+	Conn Conn
 }
 
 func (s *QUICEarlySession) CloseWithError(code quic.ErrorCode, desc string) error {
@@ -80,7 +80,7 @@ func DialQUIC(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return &QUICSession{session, conn.(*connectedConn)}, nil
+	return &QUICSession{session, conn}, nil
 }
 
 // DialAddrEarly establishes a new 0-RTT QUIC connection to a server. Analogous to DialAddr.
@@ -98,11 +98,12 @@ func DialQUICEarly(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return &QUICEarlySession{session, conn.(*connectedConn)}, nil
+	return &QUICEarlySession{session, conn}, nil
 }
 
-// connectedPacketConn wraps a Conn into a PacketConn interface. net makes a weird mess
-// of datagram sockets and connected sockets. meh.
+// connectedPacketConn wraps a Conn into a PacketConn interface.
+// net makes a weird mess of stream/datagram sockets and connected/unconnected
+// sockets. meh.
 type connectedPacketConn struct {
 	net.Conn
 }

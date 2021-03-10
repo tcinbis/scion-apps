@@ -38,7 +38,7 @@ func (r *refresher) subscribe(ctx context.Context, dst IA, s subscriber) ([]*Pat
 		return nil, err
 	}
 	if len(paths) == 0 {
-		return nil, errNoPath
+		return nil, errNoPathTo(dst)
 	}
 	subs, ok := r.subscribers[dst]
 	r.subscribers[dst] = append(subs, s)

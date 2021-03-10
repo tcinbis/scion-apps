@@ -16,17 +16,27 @@ package pan
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"sync"
 )
 
-// XXX: export errors, also generally revisit error wrapping/handling
-var errNoPath error = errors.New("no path")
+// Conn represents a _dialed_ connection.
+type Conn interface {
+	net.Conn
+	// SetPolicy allows to set the path policy for paths used by Write, at any
+	// time.
+	SetPolicy(policy Policy)
+	// WritePath writes a message to the remote address via the given path.
+	// This bypasses the path policy and selector used for Write.
+	WritePath(path *Path, b []byte) (int, error)
+	// ReadPath reads a message and returns the (return-)path via which the
+	// message was received.
+	ReadPath(b []byte) (int, *Path, error)
+}
 
 func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
-	policy Policy, selector Selector) (net.Conn, error) {
+	policy Policy, selector Selector) (Conn, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -49,7 +59,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 			return nil, err
 		}
 	}
-	return &connectedConn{
+	return &dialedConn{
 		scionUDPConn: scionUDPConn{
 			raw: raw,
 		},
@@ -60,9 +70,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 	}, nil
 }
 
-// XXX: connectedConn, _great_ name :/
-// XXX: export (to add extended API)?
-type connectedConn struct {
+type dialedConn struct {
 	scionUDPConn
 
 	local      UDPAddr
@@ -71,34 +79,34 @@ type connectedConn struct {
 	Selector   Selector
 }
 
-func (c *connectedConn) SetPolicy(policy Policy) {
+func (c *dialedConn) SetPolicy(policy Policy) {
 	c.subscriber.setPolicy(policy)
 }
 
-func (c *connectedConn) LocalAddr() net.Addr {
+func (c *dialedConn) LocalAddr() net.Addr {
 	return c.local
 }
 
-func (c *connectedConn) RemoteAddr() net.Addr {
+func (c *dialedConn) RemoteAddr() net.Addr {
 	return c.remote
 }
 
-func (c *connectedConn) Write(b []byte) (int, error) {
+func (c *dialedConn) Write(b []byte) (int, error) {
 	var path *Path
 	if c.local.IA != c.remote.IA {
 		path = c.Selector.Path()
 		if path == nil {
-			return 0, errNoPath
+			return 0, errNoPathTo(c.remote.IA)
 		}
 	}
 	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
 }
 
-func (c *connectedConn) WritePath(path *Path, b []byte) (int, error) {
+func (c *dialedConn) WritePath(path *Path, b []byte) (int, error) {
 	return c.scionUDPConn.writeMsg(c.local, c.remote, path, b)
 }
 
-func (c *connectedConn) Read(b []byte) (int, error) {
+func (c *dialedConn) Read(b []byte) (int, error) {
 	for {
 		n, remote, _, err := c.scionUDPConn.readMsg(b)
 		if err != nil {
@@ -111,7 +119,7 @@ func (c *connectedConn) Read(b []byte) (int, error) {
 	}
 }
 
-func (c *connectedConn) ReadPath(b []byte) (int, *Path, error) {
+func (c *dialedConn) ReadPath(b []byte) (int, *Path, error) {
 	for {
 		n, remote, fwPath, err := c.scionUDPConn.readMsg(b)
 		if err != nil {
@@ -128,7 +136,7 @@ func (c *connectedConn) ReadPath(b []byte) (int, *Path, error) {
 	}
 }
 
-func (c *connectedConn) Close() error {
+func (c *dialedConn) Close() error {
 	_ = c.subscriber.Close()
 	return c.scionUDPConn.Close()
 }

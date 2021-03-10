@@ -14,7 +14,17 @@
 
 package pan
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
+
+var ErrNoPath = errors.New("no path")
+
+func errNoPathTo(ia IA) error {
+	return fmt.Errorf("%w to %s", ErrNoPath, ia)
+}
 
 const (
 	maxDuration time.Duration = 1<<63 - 1

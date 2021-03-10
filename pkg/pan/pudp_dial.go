@@ -34,19 +34,19 @@ func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Po
 	if err != nil {
 		return nil, err
 	}
-	go controller.Run(udpConn.(*connectedConn))
-	return &connectedPUDPConn{
-		connectedConn: udpConn.(*connectedConn),
-		controller:    controller,
+	go controller.Run(udpConn)
+	return &dialedPUDPConn{
+		dialedConn: udpConn.(*dialedConn),
+		controller: controller,
 	}, nil
 }
 
-type connectedPUDPConn struct {
-	*connectedConn
+type dialedPUDPConn struct {
+	*dialedConn
 	controller *pudpController
 }
 
-func (c *connectedPUDPConn) Write(b []byte) (int, error) {
+func (c *dialedPUDPConn) Write(b []byte) (int, error) {
 	paths, header := c.controller.decide()
 	msg := append(header, b...)
 	if len(paths) > 1 {
@@ -54,14 +54,14 @@ func (c *connectedPUDPConn) Write(b []byte) (int, error) {
 		fmt.Println(paths)
 	}
 	for _, path := range paths {
-		_, _ = c.connectedConn.WritePath(path, msg)
+		_, _ = c.dialedConn.WritePath(path, msg)
 	}
 	return len(b), nil // XXX?
 }
 
-func (c *connectedPUDPConn) Read(b []byte) (int, error) {
+func (c *dialedPUDPConn) Read(b []byte) (int, error) {
 	for {
-		nr, path, err := c.connectedConn.ReadPath(b)
+		nr, path, err := c.dialedConn.ReadPath(b)
 		if err != nil {
 			return 0, err
 		}
@@ -79,9 +79,9 @@ func (c *connectedPUDPConn) Read(b []byte) (int, error) {
 	}
 }
 
-func (c *connectedPUDPConn) Close() error {
+func (c *dialedPUDPConn) Close() error {
 	c.controller.Close()
-	return c.connectedConn.Close()
+	return c.dialedConn.Close()
 }
 
 type pudpController struct {
@@ -160,7 +160,7 @@ func (c *pudpController) OnPathDown(path *Path, pi PathInterface) {
 	}
 }
 
-func (c *pudpController) Run(udpConn *connectedConn) {
+func (c *pudpController) Run(udpConn Conn) {
 	probeTimer := time.NewTimer(0)
 	<-probeTimer.C
 	inProbeWindow := false
