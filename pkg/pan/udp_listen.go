@@ -114,7 +114,7 @@ func (c *listenConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error)
 }
 
 func (c *listenConn) Close() error {
-	// XXX: multierror!
+	// FIXME: multierror!
 	_ = c.selector.Close()
 	return c.baseUDPConn.Close()
 }

@@ -15,6 +15,8 @@
 package pan
 
 import (
+	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -22,7 +24,7 @@ import (
 )
 
 func TestSortStablePartialOrder(t *testing.T) {
-	//
+	// containsAll tests if all runes of sub are contained in s.
 	containsAll := func(s, sub string) bool {
 		for _, r := range sub {
 			if !strings.ContainsRune(s, r) {
@@ -89,6 +91,19 @@ func TestSortStablePartialOrder(t *testing.T) {
 		})
 	}
 
+	// n**2 --> 400 is still fairly quick, 600 is meh, 1000 takes long, 10000 takes hours
+	stressSorted := make([]string, 400)
+	sb := strings.Builder{}
+	for i := range stressSorted {
+		stressSorted[i] = sb.String()
+		sb.WriteRune(rune(i))
+	}
+	stressInput := append([]string{}, stressSorted...)
+	rand.Shuffle(len(stressInput), func(i, j int) {
+		stressInput[i], stressInput[j] = stressInput[j], stressInput[i]
+	})
+	fmt.Println("stress built")
+
 	// test the sorting
 	cases := []struct {
 		name string
@@ -141,6 +156,11 @@ func TestSortStablePartialOrder(t *testing.T) {
 			name: "mixed 5",
 			in:   []string{"abd", "ab", "abc", "ae", "a"},
 			out:  []string{"a", "ab", "abd", "abc", "ae"},
+		},
+		{
+			name: "stress",
+			in:   stressInput,
+			out:  stressSorted,
 		},
 	}
 	for _, c := range cases {

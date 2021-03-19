@@ -110,8 +110,7 @@ func (p LowestLatency) Filter(paths []*Path) []*Path {
 //   _    , false otherwise, i.e. if s[i] and s[j] are not comparable
 //
 // NOTE: this is implemented as an insertion sort, so has quadratic complexity.
-// Be careful!
-// XXX: It would be nicer on any slices like sort.Slice, but ... oh golang.
+// Should not be called with more than very few hundred paths. Be careful!
 func sortStablePartialOrder(s []*Path, lessFunc func(i, j int) (bool, bool)) {
 	for i := 1; i < len(s); i++ {
 		k := i

@@ -39,7 +39,7 @@ type InteractiveSelection struct {
 }
 
 func (p *InteractiveSelection) Filter(paths []*Path) []*Path {
-	dstIA := pathDestination(paths[0])
+	dstIA := paths[0].Destination
 	choice, ok := p.choices[dstIA]
 	if !ok {
 		chosenPaths := p.Prompter.Prompt(paths, dstIA)
@@ -102,7 +102,7 @@ func (p CommandlinePrompter) Prompt(paths []*Path, remote IA) []*Path {
 	return selectedPaths
 }
 
-// XXX copied over from nesquic demo with minimal changes. Parsing should be
+// TODO copied over from nesquic demo with minimal changes. Parsing should be
 // improved (e.g. handle whitespace more gracefully)
 func parsePathChoice(selection string, max int) (pathIndices []int, err error) {
 	// Split tokens

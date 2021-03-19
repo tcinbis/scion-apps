@@ -32,7 +32,7 @@ type refresher struct {
 
 // subscribe for paths to dst.
 func (r *refresher) subscribe(ctx context.Context, dst IA, s subscriber) ([]*Path, error) {
-	// XXX: oops, this will not inform subscribers of updated paths. Need to explicily check here
+	// BUG: oops, this will not inform subscribers of updated paths. Need to explicily check here
 	paths, err := r.pool.paths(ctx, dst)
 	if err != nil {
 		return nil, err
@@ -117,18 +117,6 @@ func (r *refresher) shouldRefresh(now, expiry, lastQuery time.Time) bool {
 	return now.After(earliestAllowedRefresh) && now.After(timeForRefresh)
 }
 
-func (r *refresher) earliestPathExpiry() time.Time {
-	r.pool.entriesMutex.RLock() // XXX: fiddly sync, should be private to pool or ok?
-	defer r.pool.entriesMutex.RUnlock()
-	ret := maxTime
-	for _, entry := range r.pool.entries {
-		if entry.earliestExpiry.Before(ret) {
-			ret = entry.earliestExpiry
-		}
-	}
-	return ret
-}
-
 func (r *refresher) untilNextRefresh(prevRefresh time.Time) time.Duration {
 	return time.Until(r.nextRefresh(prevRefresh))
 }
@@ -139,7 +127,7 @@ func (r *refresher) nextRefresh(prevRefresh time.Time) time.Time {
 	}
 	nextRefresh := prevRefresh.Add(pathRefreshInterval)
 
-	expiry := r.earliestPathExpiry()
+	expiry := r.pool.earliestPathExpiry()
 	randOffset := time.Duration(rand.Intn(10)) * time.Second // avoid everbody refreshing simultaneously
 	expiryRefresh := expiry.Add(-pathExpiryRefreshLeadTime + randOffset)
 

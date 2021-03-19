@@ -20,18 +20,20 @@ import (
 	"time"
 )
 
-// Why the global pool:
+// pool is the *global* path pool.
 // - share cache between multiple connections
-// - share stats
-// - have something central that does refresh before expiration
-// this is all private stuff
+// - centrally refresh paths before expiration
 var pool pathPool
 
-// pathPoolDst is path pool entry for one destination IA
-type pathPoolDst struct {
-	lastQuery      time.Time
-	earliestExpiry time.Time
-	paths          []*Path
+func init() {
+	pool.refresher = refresher{
+		pool:            &pool,
+		subscribers:     make(map[IA][]subscriber),
+		newSubscription: make(chan bool),
+	}
+	pool.entries = make(map[IA]pathPoolDst)
+	// note: start refresher, but won't do anything until paths are added to the pool
+	go pool.refresher.run()
 }
 
 type pathPool struct {
@@ -40,17 +42,11 @@ type pathPool struct {
 	entries      map[IA]pathPoolDst
 }
 
-func init() {
-	// XXX: not very elegant, but I do like to separate out the refresher _and_
-	// keep the subscribe interface on the pool. /shrug
-	pool.refresher = refresher{
-		pool:            &pool,
-		subscribers:     make(map[IA][]subscriber),
-		newSubscription: make(chan bool),
-	}
-	pool.entries = make(map[IA]pathPoolDst)
-	// XXX: bah. in init? It doesn't do anything until it's used, but still meh.
-	go pool.refresher.run()
+// pathPoolDst is path pool entry for one destination IA
+type pathPoolDst struct {
+	lastQuery      time.Time
+	earliestExpiry time.Time
+	paths          []*Path
 }
 
 func (p *pathPool) subscribe(ctx context.Context, dstIA IA, s subscriber) ([]*Path, error) {
@@ -122,6 +118,18 @@ func (e *pathPoolDst) update(paths []*Path) {
 	e.lastQuery = now
 	e.earliestExpiry = earliestPathExpiry(paths)
 	e.paths = paths
+}
+
+func (p *pathPool) earliestPathExpiry() time.Time {
+	p.entriesMutex.RLock()
+	defer p.entriesMutex.RUnlock()
+	ret := maxTime
+	for _, entry := range p.entries {
+		if entry.earliestExpiry.Before(ret) {
+			ret = entry.earliestExpiry
+		}
+	}
+	return ret
 }
 
 func earliestPathExpiry(paths []*Path) time.Time {

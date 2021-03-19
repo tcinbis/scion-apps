@@ -51,7 +51,6 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 	if err != nil {
 		return nil, err
 	}
-	// XXX: dont do this for dst in local IA!
 	var subscriber *pathRefreshSubscriber
 	if remote.IA != slocal.IA {
 		subscriber, err = openPathRefreshSubscriber(ctx, remote, policy, selector)
@@ -80,7 +79,9 @@ type dialedConn struct {
 }
 
 func (c *dialedConn) SetPolicy(policy Policy) {
-	c.subscriber.setPolicy(policy)
+	if c.subscriber != nil {
+		c.subscriber.setPolicy(policy)
+	}
 }
 
 func (c *dialedConn) LocalAddr() net.Addr {
@@ -137,7 +138,9 @@ func (c *dialedConn) ReadPath(b []byte) (int, *Path, error) {
 }
 
 func (c *dialedConn) Close() error {
-	_ = c.subscriber.Close()
+	if c.subscriber != nil {
+		_ = c.subscriber.Close()
+	}
 	return c.baseUDPConn.Close()
 }
 
@@ -171,9 +174,7 @@ func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, policy Polic
 }
 
 func (s *pathRefreshSubscriber) Close() error {
-	if s != nil {
-		pool.unsubscribe(s.remote.IA, s)
-	}
+	pool.unsubscribe(s.remote.IA, s)
 	return nil
 }
 
@@ -245,9 +246,9 @@ func (s *DefaultSelector) OnPathDown(path *Path, pi PathInterface) {
 	defer s.mutex.Unlock()
 
 	if isInterfaceOnPath(s.paths[s.current], pi) || path.Fingerprint == s.currentFingerprint {
-		// XXX: this is a quite dumb; will forget about the down notifications immediately.
-		// XXX: this should be replaced with sending this to "Stats DB". Then the
-		// selector needs to be subscribed to the stats DB.
+		// TODO: this should be replaced with sending this to "Stats DB".
+		// Currently, this is a quite dumb; it will forget about the down notifications immediately
+		// and each
 
 		// Try next path. Note that this will keep cycling through all paths if none are working.
 		s.current = (s.current + 1) % len(s.paths)

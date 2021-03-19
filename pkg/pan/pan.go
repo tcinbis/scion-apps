@@ -104,7 +104,8 @@ import (
 	"github.com/scionproto/scion/go/lib/snet"
 )
 
-// XXX: leaking addr
+// FIXME: leaking addr.I, addr.A
+// TODO: parse
 type IA addr.IA
 
 func (ia IA) String() string {
@@ -125,7 +126,7 @@ func (a UDPAddr) Network() string {
 }
 
 func (a UDPAddr) String() string {
-	// XXX: maybe we can start to experiment with different representations here.
+	// TODO: Maybe we can start to experiment with different representations here.
 	// I like
 	//   isd-as-ipv4:port
 	//   [isd-as-ipv6]:port (who cares about zones anyway?)

@@ -95,8 +95,6 @@ func (c *baseUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, err
 			Port: underlay.EndhostPort,
 		}
 	} else {
-		// XXX: could have global lookup table with ifID->UDP instead of passing this around.
-		// Might also allow to "properly" bind to wildcard (cache correct source address per ifID).
 		nextHop = path.ForwardingPath.underlay
 		spath = path.ForwardingPath.spath
 	}
@@ -143,7 +141,7 @@ func (c *baseUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 		var lastHop net.UDPAddr
 		err := c.raw.ReadFrom(&pkt, &lastHop)
 		if err != nil {
-			// XXX: hack, snet does not properly parse all SCMP types; just do *something*
+			// FIXME:HACK: snet does not properly parse all SCMP types; just do *something*
 			if strings.HasPrefix(err.Error(), "decoding packet\n    unhandled SCMP type") {
 				// cant get this out without parsing the string
 				err = SCMPError{

@@ -58,14 +58,11 @@ func (p *Path) String() string {
 	}
 }
 
-// XXX: remove
-func pathDestination(p *Path) IA {
-	return p.Destination
-}
-
 // ForwardingPath represents a data plane forwarding path.
 type ForwardingPath struct {
-	spath    spath.Path
+	spath spath.Path
+	// NOTE: could have global lookup table with ifID->UDP instead of passing this around.
+	// Might also allow to "properly" bind to wildcard (cache correct source address per ifID).
 	underlay *net.UDPAddr
 }
 
@@ -119,7 +116,7 @@ func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, e
 	if fwPath.IsEmpty() {
 		return nil, nil
 	}
-	// XXX: inefficient, decoding twice! Change this to decode and then both
+	// FIXME: inefficient, decoding twice! Change this to decode and then both
 	// reverse and extract fw info
 	if err := fwPath.spath.Reverse(); err != nil {
 		return nil, err
@@ -230,8 +227,8 @@ func pathSequenceFromInterfaces(interfaces []PathInterface) pathSequence {
 }
 
 // Fingerprint returns the pathSequence as a comparable/hashable object (string).
+// Currently somewhat human readable, could do simple binary encoding (for brevity).
 func (s pathSequence) Fingerprint() PathFingerprint {
-	// XXX: currently somewhat human readable, could do simple binary
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "%s %s", s.Source, s.Destination)
 	for _, ifID := range s.InterfaceIDs {
@@ -240,7 +237,7 @@ func (s pathSequence) Fingerprint() PathFingerprint {
 	return PathFingerprint(b.String())
 }
 
-// XXX: rename. "PathSequenceKey"?
+// TODO: rename. "PathSequenceKey"?
 // PathFingerprint is an opaque identifier for a path. It identifies a path by
 // its source and destination IA and the sequence of interface identifiers
 // along the path.

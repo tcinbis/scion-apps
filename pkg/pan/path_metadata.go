@@ -27,15 +27,15 @@ type PathInterface struct {
 	IfID IfID
 }
 
-// XXX: copied from snet.PathMetadata: does not contain Expiry and uses the
-// local types (pan.PathInterface instead of snet.PathInterface, ...)
-
 // PathMetadata contains supplementary information about a path.
 //
 // The information about MTU, Latency, Bandwidth etc. are based solely on data
 // contained in the AS entries in the path construction beacons. These entries
 // are signed/verified based on the control plane PKI. However, the
 // *correctness* of this meta data has *not* been checked.
+//
+// NOTE: copied from snet.PathMetadata: does not contain Expiry and uses the
+// local types (pan.PathInterface instead of snet.PathInterface, ...)
 type PathMetadata struct {
 	// Interfaces is a list of interfaces on the path.
 	Interfaces []PathInterface
@@ -113,14 +113,15 @@ func (pm *PathMetadata) LowerLatency(b *PathMetadata) (bool, bool) {
 
 // latencySum returns the total latency and the set of edges with unknown
 // latency
-// XXX: the latency from the end hosts to the first/last interface is always
-// unknown. If that is taken into account, all the paths become incomparable.
+// NOTE: the latency from the end hosts to the first/last interface is always
+// unknown. If that would be taken into account, all the paths become
+// incomparable.
 func (pm *PathMetadata) latencySum() (time.Duration, pathHopSet) {
 	var sum time.Duration
 	unknown := make(pathHopSet)
 	for i := 0; i < len(pm.Interfaces)-1; i++ {
 		l := pm.Latency[i]
-		if l != 0 { // XXX: needs to be fixed in combinator/snet; should not use 0 for unknown
+		if l != 0 { // FIXME: needs to be fixed in combinator/snet; should not use 0 for unknown
 			sum += l
 		} else {
 			unknown[pathHop{a: pm.Interfaces[i], b: pm.Interfaces[i+1]}] = struct{}{}
