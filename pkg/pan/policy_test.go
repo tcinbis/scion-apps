@@ -15,7 +15,6 @@
 package pan
 
 import (
-	"fmt"
 	"math/rand"
 	"strings"
 	"testing"
@@ -102,7 +101,6 @@ func TestSortStablePartialOrder(t *testing.T) {
 	rand.Shuffle(len(stressInput), func(i, j int) {
 		stressInput[i], stressInput[j] = stressInput[j], stressInput[i]
 	})
-	fmt.Println("stress built")
 
 	// test the sorting
 	cases := []struct {

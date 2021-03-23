@@ -40,7 +40,7 @@ var errBadDstAddress error = errors.New("dst address not a UDPAddr")
 type ReplySelector interface {
 	ReplyPath(src, dst UDPAddr) *Path
 	OnPacketReceived(src, dst UDPAddr, path *Path)
-	OnPathDown(*Path, PathInterface)
+	OnPathDown(PathFingerprint, PathInterface)
 	Close() error
 }
 
@@ -55,7 +55,8 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	if selector == nil {
 		selector = NewDefaultReplySelector()
 	}
-	raw, slocal, err := openBaseUDPConn(ctx, local, selector)
+	stats.subscribe(selector)
+	raw, slocal, err := openBaseUDPConn(ctx, local)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +115,7 @@ func (c *listenConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error)
 }
 
 func (c *listenConn) Close() error {
+	stats.unsubscribe(c.selector)
 	// FIXME: multierror!
 	_ = c.selector.Close()
 	return c.baseUDPConn.Close()
@@ -155,8 +157,8 @@ func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
 	s.remotes[ksrc] = r
 }
 
-func (s *DefaultReplySelector) OnPathDown(*Path, PathInterface) {
-	// TODO: report to stats DB
+func (s *DefaultReplySelector) OnPathDown(PathFingerprint, PathInterface) {
+
 }
 
 func (s *DefaultReplySelector) Close() error {

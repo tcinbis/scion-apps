@@ -29,14 +29,8 @@ import (
 	"github.com/scionproto/scion/go/lib/topology/underlay"
 )
 
-type pathDownHandler interface {
-	OnPathDown(*Path, PathInterface)
-}
-
 // openBaseUDPConn opens new raw SCION UDP conn.
-func openBaseUDPConn(ctx context.Context, local *net.UDPAddr,
-	onPathDown pathDownHandler) (snet.PacketConn, UDPAddr, error) {
-
+func openBaseUDPConn(ctx context.Context, local *net.UDPAddr) (snet.PacketConn, UDPAddr, error) {
 	dispatcher := host().dispatcher
 	ia := host().ia
 
@@ -44,7 +38,7 @@ func openBaseUDPConn(ctx context.Context, local *net.UDPAddr,
 	if err != nil {
 		return nil, UDPAddr{}, err
 	}
-	conn := snet.NewSCIONPacketConn(rconn, &scmpHandler{onPathDown}, true)
+	conn := snet.NewSCIONPacketConn(rconn, scmpHandler{}, true)
 	slocal := UDPAddr{
 		IA:   ia,
 		IP:   local.IP,
@@ -78,7 +72,6 @@ func (c *baseUDPConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *baseUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
-
 	// assert:
 	if src.IA != path.Source {
 		panic("writeMsg: src.IA != path.Source")
@@ -175,11 +168,9 @@ func (c *baseUDPConn) Close() error {
 	return c.raw.Close()
 }
 
-type scmpHandler struct {
-	pathDownHandler pathDownHandler
-}
+type scmpHandler struct{}
 
-func (h *scmpHandler) Handle(pkt *snet.Packet) error {
+func (h scmpHandler) Handle(pkt *snet.Packet) error {
 	scmp := pkt.Payload.(snet.SCMPPayload)
 	switch scmp.Type() {
 	case slayers.SCMPTypeExternalInterfaceDown:
@@ -188,7 +179,19 @@ func (h *scmpHandler) Handle(pkt *snet.Packet) error {
 			IA:   IA(msg.IA),
 			IfID: IfID(msg.Interface),
 		}
-		h.pathDownHandler.OnPathDown(nil, pi)
+		// BUG: need to parse quoted header to get original destination address
+		// Source of the SCMP is the intermediate router on the path, so the fingerprint
+		// (containing this source address) is wrong.
+		p, err := reversePathFromForwardingPath(
+			IA(pkt.Destination.IA),
+			IA(pkt.Source.IA),
+			ForwardingPath{spath: pkt.Path},
+		)
+		if err != nil { // bad packet, drop silently
+			return nil
+		}
+		// FIXME: can block _all_ connections, call async (or internally async)
+		stats.NotifyPathDown(p.Fingerprint, pi)
 		return nil
 	case slayers.SCMPTypeInternalConnectivityDown:
 		msg := pkt.Payload.(snet.SCMPInternalConnectivityDown)
@@ -196,7 +199,15 @@ func (h *scmpHandler) Handle(pkt *snet.Packet) error {
 			IA:   IA(msg.IA),
 			IfID: IfID(msg.Egress),
 		}
-		h.pathDownHandler.OnPathDown(nil, pi)
+		p, err := reversePathFromForwardingPath(
+			IA(pkt.Destination.IA),
+			IA(pkt.Source.IA),
+			ForwardingPath{spath: pkt.Path},
+		)
+		if err != nil {
+			return nil
+		}
+		stats.NotifyPathDown(p.Fingerprint, pi)
 		return nil
 	default:
 		return SCMPError{

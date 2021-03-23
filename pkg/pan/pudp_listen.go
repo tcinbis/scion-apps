@@ -126,7 +126,7 @@ func (c *pudpListenerController) OnPacketReceived(src UDPAddr, dst UDPAddr, path
 	panic("not implemented") // not called; pudp overrides ReadFrom and we call custom methods below
 }
 
-func (c *pudpListenerController) OnPathDown(_ *Path, _ PathInterface) {
+func (c *pudpListenerController) OnPathDown(_ PathFingerprint, _ PathInterface) {
 	panic("not implemented") // TODO: Implement
 }
 

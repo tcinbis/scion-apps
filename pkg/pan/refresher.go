@@ -20,18 +20,26 @@ import (
 	"time"
 )
 
-type subscriber interface {
+type refreshee interface {
 	refresh(dst IA, paths []*Path)
 }
 
 type refresher struct {
-	subscribers     map[IA][]subscriber
+	subscribers     map[IA][]refreshee
 	pool            *pathPool
 	newSubscription chan bool
 }
 
+func makeRefresher(pool *pathPool) refresher {
+	return refresher{
+		pool:            pool,
+		subscribers:     make(map[IA][]refreshee),
+		newSubscription: make(chan bool),
+	}
+}
+
 // subscribe for paths to dst.
-func (r *refresher) subscribe(ctx context.Context, dst IA, s subscriber) ([]*Path, error) {
+func (r *refresher) subscribe(ctx context.Context, dst IA, s refreshee) ([]*Path, error) {
 	// BUG: oops, this will not inform subscribers of updated paths. Need to explicily check here
 	paths, err := r.pool.paths(ctx, dst)
 	if err != nil {
@@ -48,7 +56,7 @@ func (r *refresher) subscribe(ctx context.Context, dst IA, s subscriber) ([]*Pat
 	return paths, nil
 }
 
-func (r *refresher) unsubscribe(ia IA, s subscriber) {
+func (r *refresher) unsubscribe(ia IA, s refreshee) {
 	idx := -1
 	subs := r.subscribers[ia]
 	for i, v := range subs {

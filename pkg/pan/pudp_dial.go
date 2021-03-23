@@ -147,14 +147,12 @@ func (c *pudpController) SetPaths(paths []*Path) {
 	// TODO reset c.current! Set current again or switch path
 }
 
-func (c *pudpController) OnPathDown(path *Path, pi PathInterface) {
+func (c *pudpController) OnPathDown(pf PathFingerprint, pi PathInterface) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	stats.notifyDown(path.Fingerprint, pi)
-
 	if c.current != nil &&
-		(isInterfaceOnPath(c.current, pi) || path.Fingerprint == c.current.Fingerprint) {
+		(isInterfaceOnPath(c.current, pi) || pf == c.current.Fingerprint) {
 		// TODO
 		//	fmt.Println("failover:", s.current, len(s.paths))
 	}
@@ -234,7 +232,7 @@ func (c *pudpController) registerPong(seq uint16, path *Path) {
 		// XXX: we should register the samples already when
 		// sending the probe and then update it on the pong. This will give a
 		// better view of dead paths when sorting
-		stats.registerLatency(path.Fingerprint, time.Since(c.pingTime))
+		stats.RegisterLatency(path.Fingerprint, time.Since(c.pingTime))
 	}
 }
 

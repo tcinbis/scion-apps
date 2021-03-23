@@ -36,7 +36,7 @@ func (p PolicyChain) Filter(paths []*Path) []*Path {
 	return paths
 }
 
-// TODO:
+// TODO: more built-in policies
 // - filter by beaconing metadata (latency, bandwidth, geo, MTU, ...)
 // - policy language (yaml or whatever)
 

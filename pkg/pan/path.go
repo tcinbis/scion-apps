@@ -25,9 +25,8 @@ import (
 	"github.com/scionproto/scion/go/lib/spath"
 )
 
-// XXX: revisit: is this a pointer or value type?
+// TODO: revisit: pointer or value type? what goes where? should ForwardingPath be exported?
 type Path struct {
-	// XXX: think about this again. what goes where? should ForwardingPath be exported?
 	Source         IA
 	Destination    IA
 	ForwardingPath ForwardingPath

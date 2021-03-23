@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/* pan, pan ready, pan fried, Path Aware Networking, peter pan,
+/* pan, pan ready, pan fried, pandemic, Path Aware Networking, peter pan,
 
 Package pan provides a policy-based path aware network layer for building
 applications supporting SCION natively.
@@ -35,12 +35,21 @@ Goals:
 
 Non-goals:
 - expose all low level details or allow to tweak every parameter...
+
+
+TODO proper SCMP parsing (in snet) to be able to at least attribute it to a
+     specific path. As workaround, could limit fingerprint to interface sequence without src/dst.
+TODO add name resolution, copy-paste from appnet
+TODO limit resources used by listener; max sessions & cleanup after timeout, also for stats
+TODO explicit cleanup of listener conn paths when quic session ends
+TODO hijacking by src address spoofing and bad path.
+		 idea: stick to _first_ path initially, asynchronously fetch return paths
+		 and allow matching paths (policy!)
 */
 package pan
 
 /*
 XXX scratchpad
-
 Other name ideas:
   supa
   sap
@@ -48,7 +57,6 @@ Other name ideas:
   ship:
     helm, rudder, pilot, scout, spy, till, tiller, skipper
     foghorn
-
 
 Features / Usecases
 
@@ -81,8 +89,6 @@ Features / Usecases
   -> only need disjointness on bottleneck links (yay for having per link information in metadata!)
   -> this is interesting e.g. for "grid-FTP" style application where multiple QUIC sessions run over
 
-
-
 - http/quic with path control
   - application can give policy
   - application can change policy
@@ -92,8 +98,6 @@ Features / Usecases
     - see the currently used path, see the dial race and path failover
     - explicitly forbid/unforbid a specific path, switch away if it's the current path
     - force use of a specific path
-
-
 */
 
 import (
@@ -105,7 +109,7 @@ import (
 )
 
 // FIXME: leaking addr.I, addr.A
-// TODO: parse
+// TODO: parse IA
 type IA addr.IA
 
 func (ia IA) String() string {

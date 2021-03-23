@@ -26,11 +26,7 @@ import (
 var pool pathPool
 
 func init() {
-	pool.refresher = refresher{
-		pool:            &pool,
-		subscribers:     make(map[IA][]subscriber),
-		newSubscription: make(chan bool),
-	}
+	pool.refresher = makeRefresher(&pool)
 	pool.entries = make(map[IA]pathPoolDst)
 	// note: start refresher, but won't do anything until paths are added to the pool
 	go pool.refresher.run()
@@ -49,12 +45,25 @@ type pathPoolDst struct {
 	paths          []*Path
 }
 
-func (p *pathPool) subscribe(ctx context.Context, dstIA IA, s subscriber) ([]*Path, error) {
-	return p.refresher.subscribe(ctx, dstIA, s)
+type pathPoolSubscriber interface {
+	refreshee
+	pathDownNotifyee
 }
 
-func (p *pathPool) unsubscribe(dstIA IA, s subscriber) {
+func (p *pathPool) subscribe(ctx context.Context, dstIA IA,
+	s pathPoolSubscriber) ([]*Path, error) {
+
+	paths, err := p.refresher.subscribe(ctx, dstIA, s)
+	if err != nil {
+		return nil, err
+	}
+	stats.subscribe(s)
+	return paths, nil
+}
+
+func (p *pathPool) unsubscribe(dstIA IA, s pathPoolSubscriber) {
 	p.refresher.unsubscribe(dstIA, s)
+	stats.unsubscribe(s)
 }
 
 // paths returns paths to dstIA. This _may_ query paths, unless they have recently been queried.

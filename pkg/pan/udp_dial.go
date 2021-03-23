@@ -47,7 +47,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 		selector = &DefaultSelector{}
 	}
 
-	raw, slocal, err := openBaseUDPConn(ctx, local, selector)
+	raw, slocal, err := openBaseUDPConn(ctx, local)
 	if err != nil {
 		return nil, err
 	}
@@ -146,19 +146,14 @@ func (c *dialedConn) Close() error {
 
 //////////////////// subscriber
 
-// enterprise path setter
-type pathSetter interface {
-	SetPaths([]*Path)
-}
-
 type pathRefreshSubscriber struct {
 	remote UDPAddr
 	policy Policy
-	target pathSetter
+	target Selector
 }
 
 func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, policy Policy,
-	target pathSetter) (*pathRefreshSubscriber, error) {
+	target Selector) (*pathRefreshSubscriber, error) {
 
 	s := &pathRefreshSubscriber{
 		target: target,
@@ -187,6 +182,10 @@ func (s *pathRefreshSubscriber) refresh(dst IA, paths []*Path) {
 	s.setFiltered(paths)
 }
 
+func (s *pathRefreshSubscriber) OnPathDown(pf PathFingerprint, pi PathInterface) {
+	s.target.OnPathDown(pf, pi)
+}
+
 func (s *pathRefreshSubscriber) setFiltered(paths []*Path) {
 	if s.policy != nil {
 		paths = s.policy.Filter(paths)
@@ -201,7 +200,7 @@ func (s *pathRefreshSubscriber) setFiltered(paths []*Path) {
 type Selector interface {
 	Path() *Path
 	SetPaths([]*Path)
-	OnPathDown(*Path, PathInterface)
+	OnPathDown(PathFingerprint, PathInterface)
 }
 
 type DefaultSelector struct {
@@ -241,18 +240,18 @@ func (s *DefaultSelector) SetPaths(paths []*Path) {
 	}
 }
 
-func (s *DefaultSelector) OnPathDown(path *Path, pi PathInterface) {
+func (s *DefaultSelector) OnPathDown(pf PathFingerprint, pi PathInterface) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if isInterfaceOnPath(s.paths[s.current], pi) || path.Fingerprint == s.currentFingerprint {
-		// TODO: this should be replaced with sending this to "Stats DB".
-		// Currently, this is a quite dumb; it will forget about the down notifications immediately
-		// and each
-
-		// Try next path. Note that this will keep cycling through all paths if none are working.
-		s.current = (s.current + 1) % len(s.paths)
-		fmt.Println("failover:", s.current, len(s.paths))
-		s.currentFingerprint = s.paths[s.current].Fingerprint
+	if isInterfaceOnPath(s.paths[s.current], pi) {
+		fmt.Println("down:", s.current, len(s.paths))
+		better := stats.FirstMoreAlive(s.paths[s.current], s.paths)
+		if better >= 0 {
+			// Try next path. Note that this will keep cycling if we get down notifications
+			s.current = better
+			fmt.Println("failover:", s.current, len(s.paths))
+			s.currentFingerprint = s.paths[s.current].Fingerprint
+		}
 	}
 }

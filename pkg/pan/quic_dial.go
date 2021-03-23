@@ -20,9 +20,6 @@ import (
 	"net"
 
 	"github.com/lucas-clemente/quic-go"
-
-	// XXX: get rid of this
-	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 )
 
 // QUICSession is a wrapper around quic.Session that always closes the
@@ -75,7 +72,6 @@ func DialQUIC(ctx context.Context,
 		return nil, err
 	}
 	pconn := connectedPacketConn{conn}
-	host = appnet.MangleSCIONAddr(host)
 	session, err := quic.DialContext(ctx, pconn, remote, host, tlsConf, quicConf)
 	if err != nil {
 		return nil, err
@@ -93,7 +89,6 @@ func DialQUICEarly(ctx context.Context,
 		return nil, err
 	}
 	pconn := connectedPacketConn{conn}
-	host = appnet.MangleSCIONAddr(host)
 	session, err := quic.DialEarlyContext(ctx, pconn, remote, host, tlsConf, quicConf)
 	if err != nil {
 		return nil, err
