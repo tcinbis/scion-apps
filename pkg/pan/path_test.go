@@ -42,7 +42,7 @@ func TestPathString(t *testing.T) {
 		{
 			name:       "no metadata",
 			interfaces: nil,
-			expected:   testFingerprint,
+			expected:   "0-0 0-0 " + testFingerprint,
 		},
 		{
 			name:       "empty",
