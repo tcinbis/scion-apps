@@ -132,10 +132,9 @@ func (c *pudpController) decide() ([]*Path, []byte) {
 		if c.remoteIdentifier == nil {
 			header.identify()
 		}
-	} else {
-		// TODO
-		// ping if in window?
 	}
+	// TODO else, ping if in window?
+
 	header.buf.WriteByte(byte(pudpHeaderPayload))
 	return paths, header.buf.Bytes()
 }
@@ -153,8 +152,7 @@ func (c *pudpController) OnPathDown(pf PathFingerprint, pi PathInterface) {
 
 	if c.current != nil &&
 		(isInterfaceOnPath(c.current, pi) || pf == c.current.Fingerprint) {
-		// TODO
-		//	fmt.Println("failover:", s.current, len(s.paths))
+		panic("not implemented") // TODO: Implement
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 )
 
 const pudpMaxRaceSequenceNums = 5
@@ -131,10 +132,14 @@ func (c *pudpListenerController) OnPathDown(_ PathFingerprint, _ PathInterface) 
 }
 
 func (c *pudpListenerController) Run() {
+	probeTimer := time.NewTimer(0)
+	<-probeTimer.C
 	for {
 		select {
 		case <-c.stop:
 			break
+		case <-probeTimer.C:
+			// TODO
 		}
 	}
 }

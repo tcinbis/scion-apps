@@ -61,12 +61,6 @@ type pathStatsDB struct {
 	subscribers []pathDownNotifyee
 }
 
-func (s *pathStatsDB) get(p PathFingerprint) PathStats {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.paths[p]
-}
-
 func (s *pathStatsDB) RegisterLatency(p PathFingerprint, latency time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

@@ -27,8 +27,6 @@ func errNoPathTo(ia IA) error {
 }
 
 const (
-	maxDuration time.Duration = 1<<63 - 1
-
 	// pathRefreshMinInterval is the minimum time between two path refreshs
 	pathRefreshMinInterval = 10 * time.Second
 	// pathRefreshInterval is the refresh interval in case no paths are expiring, i.e. the interval
