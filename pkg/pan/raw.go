@@ -179,12 +179,9 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 			IA:   IA(msg.IA),
 			IfID: IfID(msg.Interface),
 		}
-		// BUG: need to parse quoted header to get original destination address
-		// Source of the SCMP is the intermediate router on the path, so the fingerprint
-		// (containing this source address) is wrong.
 		p, err := reversePathFromForwardingPath(
-			IA(pkt.Destination.IA),
-			IA(pkt.Source.IA),
+			IA(pkt.Destination.IA), // the local IA
+			IA{},                   // original destination unknown, would require parsing the SCMP quote
 			ForwardingPath{spath: pkt.Path},
 		)
 		if err != nil { // bad packet, drop silently
@@ -200,8 +197,8 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 			IfID: IfID(msg.Egress),
 		}
 		p, err := reversePathFromForwardingPath(
-			IA(pkt.Destination.IA),
-			IA(pkt.Source.IA),
+			IA(pkt.Destination.IA), // the local IA
+			IA{},                   // unknown
 			ForwardingPath{spath: pkt.Path},
 		)
 		if err != nil {

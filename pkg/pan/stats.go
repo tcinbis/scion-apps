@@ -172,5 +172,4 @@ func (s *pathStatsDB) recordPathDown(pf PathFingerprint, pi PathInterface) {
 	pis := s.interfaces[pi]
 	pis.IsNotifiedDown = now
 	s.interfaces[pi] = pis
-
 }

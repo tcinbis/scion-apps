@@ -37,8 +37,6 @@ Non-goals:
 - expose all low level details or allow to tweak every parameter...
 
 
-TODO proper SCMP parsing (in snet) to be able to at least attribute it to a
-     specific path. As workaround, could limit fingerprint to interface sequence without src/dst.
 TODO add name resolution, copy-paste from appnet
 TODO limit resources used by listener; max sessions & cleanup after timeout, also for stats
 TODO explicit cleanup of listener conn paths when quic session ends

@@ -195,7 +195,7 @@ func (s *pathRefreshSubscriber) setFiltered(paths []*Path) {
 
 //////////////////// selector
 
-// Selector controls the path used by a single **connected** socket. Stateful.
+// Selector controls the path used by a single **dialed** socket. Stateful.
 // The Path() function is invoked for every single packet.
 type Selector interface {
 	Path() *Path
@@ -203,6 +203,13 @@ type Selector interface {
 	OnPathDown(PathFingerprint, PathInterface)
 }
 
+// DefaultSelector is a Selector for a single dialed socket.
+// This will keep using the current path, starting with the first path chosen
+// by the policy, as long possible.
+// Faults are detected passively via SCMP down notifications; whenever such
+// a down notification affects the current path, the DefaultSelector will
+// switch to the first path (in the order defined by the policy) that is not
+// affected by down notifications.
 type DefaultSelector struct {
 	mutex              sync.Mutex
 	paths              []*Path
@@ -244,7 +251,7 @@ func (s *DefaultSelector) OnPathDown(pf PathFingerprint, pi PathInterface) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if isInterfaceOnPath(s.paths[s.current], pi) {
+	if isInterfaceOnPath(s.paths[s.current], pi) || pf == s.currentFingerprint {
 		fmt.Println("down:", s.current, len(s.paths))
 		better := stats.FirstMoreAlive(s.paths[s.current], s.paths)
 		if better >= 0 {

@@ -53,7 +53,7 @@ func (p *Path) String() string {
 	if p.Metadata != nil {
 		return p.Metadata.fmtInterfaces()
 	} else {
-		return string(p.Fingerprint)
+		return fmt.Sprintf("%s %s %s", p.Source, p.Destination, p.Fingerprint)
 	}
 }
 
@@ -124,11 +124,7 @@ func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, e
 	if err != nil {
 		return nil, err
 	}
-	fingerprint := pathSequence{
-		Source:       dst,
-		Destination:  src,
-		InterfaceIDs: fpi.interfaceIDs,
-	}.Fingerprint()
+	fingerprint := pathSequence{InterfaceIDs: fpi.interfaceIDs}.Fingerprint()
 	return &Path{
 		Source:         dst,
 		Destination:    src,
@@ -203,13 +199,19 @@ func interfaceIDsFromDecoded(sp scion.Decoded) []IfID {
 	return ifIDs
 }
 
-// pathSequence describes a path by source and dest IA and a sequence of interface IDs.
+// pathSequence describes a path by a sequence of raw interface IDs, _not_
+// including any AS information.
 // This information can be obtained even from the raw forwarding paths.
 // This can be used to identify a path by its hop sequence, regardless of which
-// path segments it is created from.
+// path segments it is created from, _if_ the source AS is fixed.
+// The same pathSequence can refer to completely different paths in different
+// source ASes.
+// NOTE: it would be useful to include source and destination IA of the path
+// here to get a more specific identifier, even if multiple ASes would be
+// involved (currently not supported anyway). This is currently not included
+// because this information cannot be reliably obtained from the incompletely
+// parsed SCMP error messages.
 type pathSequence struct {
-	Source       IA
-	Destination  IA
 	InterfaceIDs []IfID
 }
 
@@ -219,8 +221,6 @@ func pathSequenceFromInterfaces(interfaces []PathInterface) pathSequence {
 		ifIDs[i] = iface.IfID
 	}
 	return pathSequence{
-		Source:       interfaces[0].IA,
-		Destination:  interfaces[len(interfaces)-1].IA,
 		InterfaceIDs: ifIDs,
 	}
 }
@@ -228,9 +228,12 @@ func pathSequenceFromInterfaces(interfaces []PathInterface) pathSequence {
 // Fingerprint returns the pathSequence as a comparable/hashable object (string).
 // Currently somewhat human readable, could do simple binary encoding (for brevity).
 func (s pathSequence) Fingerprint() PathFingerprint {
+	if len(s.InterfaceIDs) == 0 {
+		return ""
+	}
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "%s %s", s.Source, s.Destination)
-	for _, ifID := range s.InterfaceIDs {
+	fmt.Fprintf(b, "%d", s.InterfaceIDs[0])
+	for _, ifID := range s.InterfaceIDs[1:] {
 		fmt.Fprintf(b, " %d", ifID)
 	}
 	return PathFingerprint(b.String())
