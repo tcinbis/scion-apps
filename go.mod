@@ -20,10 +20,9 @@ require (
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/image v0.0.0-20191009234506-e7c1f5e7dbb8
+	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
-replace github.com/scionproto/scion => ./scion
 
-// Needed because by default the linked version of sys somehow crashes on iOS...
-replace golang.org/x/sys => github.com/golang/sys v0.0.0-20210315160823-c6e025ad8005
+replace github.com/scionproto/scion => github.com/netsec-ethz/scion v0.0.0-20210422093733-cc1229906792
