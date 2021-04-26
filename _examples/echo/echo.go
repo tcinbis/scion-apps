@@ -105,7 +105,7 @@ func runClient(address string) error {
 			n, err := conn.Read(buffer)
 			if err != nil {
 				fmt.Println(err)
-				continue
+				return
 			}
 			data := buffer[:n]
 			fmt.Printf("Received reply: %s\n", data)
