@@ -46,6 +46,7 @@ func DialUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr,
 		baseUDPConn: &baseUDPConn{
 			raw: raw,
 		},
+		isListener: false,
 		local:      slocal,
 		remote:     remote,
 		subscriber: subscriber,

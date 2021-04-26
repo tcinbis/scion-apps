@@ -104,6 +104,7 @@ func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, p
 
 	return &connection{
 		baseUDPConn: &c.baseUDPConn,
+		isListener: true,
 		local:      c.local,
 		remote:     remote,
 		subscriber: subscriber,

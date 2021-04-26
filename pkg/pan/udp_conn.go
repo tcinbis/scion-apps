@@ -19,6 +19,7 @@ type Conn interface {
 type connection struct {
 	*baseUDPConn
 
+	isListener bool
 	local      UDPAddr
 	remote     UDPAddr
 	subscriber *pathRefreshSubscriber
@@ -89,5 +90,9 @@ func (c *connection) Close() error {
 	if c.subscriber != nil {
 		_ = c.subscriber.Close()
 	}
-	return c.baseUDPConn.Close()
+	
+	if !c.isListener {
+		return c.baseUDPConn.Close()
+	}
+	return nil
 }
