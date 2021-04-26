@@ -1,0 +1,4 @@
+[submodule "scion"]
+	path = scion
+	url = https://github.com/JonasGessner/scion
+	branch = scionlab
