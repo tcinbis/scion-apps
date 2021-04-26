@@ -56,7 +56,7 @@ func runServer(port int) error {
 	fmt.Println(listener.LocalAddr())
 
 	buffer := make([]byte, 16*1024)
-	knownConnections := make(map[net.Addr]pan.Conn)
+	knownConnections := make(map[string]pan.Conn)
 	for {
 		n, from, err := listener.ReadFrom(buffer)
 		if err != nil {
@@ -64,14 +64,14 @@ func runServer(port int) error {
 			continue
 		}
 		data := buffer[:n]
-		conn := knownConnections[from]
+		conn := knownConnections[from.String()]
 		if conn == nil {
 			conn, err = listener.MakeConnectionToRemote(context.Background(), from.(pan.UDPAddr), nil, nil)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			knownConnections[from] = conn
+			knownConnections[from.String()] = conn
 			fmt.Printf("Received from new connection %s: %s\n", from, data)
 		} else {
 			fmt.Printf("Received from known connection %s: %s\n", from, data)
