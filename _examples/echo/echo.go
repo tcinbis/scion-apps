@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
@@ -50,6 +51,7 @@ func main() {
 func runServer(port int) error {
 	listener, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: port}, nil)
 	if err != nil {
+		fmt.Println("err", err)
 		return err
 	}
 	defer listener.Close()
@@ -94,9 +96,9 @@ func runClient(address string) error {
 	}
 	conn, err := pan.DialUDP(context.Background(), nil, addr, nil, nil)
 	if err != nil {
+		fmt.Println("err", err)
 		return err
 	}
-	fmt.Println("err", err)
 	defer conn.Close()
 
 	go func() {
@@ -104,8 +106,12 @@ func runClient(address string) error {
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
+				// TODO: There definitely needs to be a better way to check whether a connection is closed than this...
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					return
+				}
 				fmt.Println(err)
-				return
+				continue
 			}
 			data := buffer[:n]
 			fmt.Printf("Received reply: %s\n", data)
