@@ -95,6 +95,7 @@ func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, p
 	var subscriber *pathRefreshSubscriber
 	if remote.IA != c.local.IA {
 		var err error
+		// TODO: This is blocking. We already have at least one path and it would be nice to at least have the option to do a soft upgrade to full path awareness. I.e. let the connection start out with just the existing return path(s), do a full path query in the background and "upgrade" to full path control once sciond returns all the paths to the destination
 		subscriber, err = openPathRefreshSubscriber(ctx, remote, policy, selector)
 		if err != nil {
 			return nil, err
