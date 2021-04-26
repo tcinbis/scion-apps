@@ -36,13 +36,13 @@ func DialPUDP(ctx context.Context, local *net.UDPAddr, remote UDPAddr, policy Po
 	}
 	go controller.Run(udpConn)
 	return &dialedPUDPConn{
-		dialedConn: udpConn.(*dialedConn),
+		connection: udpConn.(*connection),
 		controller: controller,
 	}, nil
 }
 
 type dialedPUDPConn struct {
-	*dialedConn
+	*connection
 	controller *pudpController
 }
 
@@ -54,14 +54,14 @@ func (c *dialedPUDPConn) Write(b []byte) (int, error) {
 		fmt.Println(paths)
 	}
 	for _, path := range paths {
-		_, _ = c.dialedConn.WritePath(path, msg)
+		_, _ = c.connection.WritePath(path, msg)
 	}
 	return len(b), nil // XXX?
 }
 
 func (c *dialedPUDPConn) Read(b []byte) (int, error) {
 	for {
-		nr, path, err := c.dialedConn.ReadPath(b)
+		nr, path, err := c.connection.ReadPath(b)
 		if err != nil {
 			return 0, err
 		}
@@ -81,7 +81,7 @@ func (c *dialedPUDPConn) Read(b []byte) (int, error) {
 
 func (c *dialedPUDPConn) Close() error {
 	c.controller.Close()
-	return c.dialedConn.Close()
+	return c.connection.Close()
 }
 
 type pudpController struct {

@@ -36,7 +36,7 @@ import (
 
 var errBadDstAddress error = errors.New("dst address not a UDPAddr")
 
-// ReplySelector selects the reply path for WriteTo in a listenConn.
+// ReplySelector selects the reply path for WriteTo in a listener.
 type ReplySelector interface {
 	ReplyPath(src, dst UDPAddr) *Path
 	OnPacketReceived(src, dst UDPAddr, path *Path)
@@ -44,8 +44,14 @@ type ReplySelector interface {
 	Close() error
 }
 
+type UDPListener interface {
+	net.PacketConn
+
+	MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error)
+}
+
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
-	selector ReplySelector) (net.PacketConn, error) {
+	selector ReplySelector) (UDPListener, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -60,7 +66,7 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	if err != nil {
 		return nil, err
 	}
-	return &listenConn{
+	return &listener{
 		baseUDPConn: baseUDPConn{
 			raw: raw,
 		},
@@ -69,24 +75,52 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	}, nil
 }
 
-type listenConn struct {
+type listener struct {
 	baseUDPConn
 
 	local    UDPAddr
 	selector ReplySelector
 }
 
-func (c *listenConn) LocalAddr() net.Addr {
+func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error) {
+	if selector == nil {
+		selector = &DefaultSelector{}
+	}
+
+	// If selector is not already populated with a path give it the reply path that we have
+	if selector.Path() == nil {
+		selector.SetPaths([]*Path {c.selector.ReplyPath(c.local, remote)})
+	}
+
+	var subscriber *pathRefreshSubscriber
+	if remote.IA != c.local.IA {
+		var err error
+		subscriber, err = openPathRefreshSubscriber(ctx, remote, policy, selector)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &connection{
+		baseUDPConn: &c.baseUDPConn,
+		local:      c.local,
+		remote:     remote,
+		subscriber: subscriber,
+		Selector:   selector,
+	}, nil
+}
+
+func (c *listener) LocalAddr() net.Addr {
 	return c.local
 }
 
-func (c *listenConn) ReadFrom(b []byte) (int, net.Addr, error) {
+func (c *listener) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, remote, path, err := c.ReadFromPath(b)
 	c.selector.OnPacketReceived(remote, c.local, path)
 	return n, remote, err
 }
 
-func (c *listenConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
+func (c *listener) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 	if err != nil {
 		return n, UDPAddr{}, nil, err
@@ -95,7 +129,7 @@ func (c *listenConn) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	return n, remote, path, err
 }
 
-func (c *listenConn) WriteTo(b []byte, dst net.Addr) (int, error) {
+func (c *listener) WriteTo(b []byte, dst net.Addr) (int, error) {
 	sdst, ok := dst.(UDPAddr)
 	if !ok {
 		return 0, errBadDstAddress
@@ -110,11 +144,11 @@ func (c *listenConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	return c.WriteToPath(b, sdst, path)
 }
 
-func (c *listenConn) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
+func (c *listener) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
 	return c.baseUDPConn.writeMsg(c.local, dst, path, b)
 }
 
-func (c *listenConn) Close() error {
+func (c *listener) Close() error {
 	stats.unsubscribe(c.selector)
 	// FIXME: multierror!
 	_ = c.selector.Close()
