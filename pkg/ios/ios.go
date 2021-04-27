@@ -156,7 +156,7 @@ func ListenUDP(port int) (*Listener, error) {
 	return &Listener{ underlying: l }, nil
 }
 
-func (l Listener)MakeConnectionToRemote(remote UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
+func (l Listener)MakeConnectionToRemote(remote *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
 	policy := &pathPolicy { filter: policyFilter }
 	c, err := l.underlying.MakeConnectionToRemote(context.Background(), remote.underlying, policy, nil)
 	if err != nil { return nil, err}
@@ -166,6 +166,13 @@ func (l Listener)MakeConnectionToRemote(remote UDPAddress, policyFilter PathPoli
 type ReadResult struct {
     BytesRead int
     Source *UDPAddress
+	Path *Path
+    Err error
+}
+
+type WriteResult struct {
+    BytesWritten int
+	Path *Path
     Err error
 }
 
@@ -178,19 +185,24 @@ func (c Connection) GetLocalAddress() *UDPAddress {
 }
 
 func (c Connection) Read(buffer []byte) *ReadResult {
-    n, e := c.underlying.Read(buffer)
+    n, p, e := c.underlying.ReadPath(buffer)
     
-    return &ReadResult{n, c.GetRemoteAddress(), e}
+    return &ReadResult{n, c.GetRemoteAddress(), &Path{underlying: p}, e}
 }
 
-func (c Connection) Write(buffer []byte) (int, error) {
-    return c.underlying.Write(buffer)
+func (c Connection) Write(buffer []byte) *WriteResult {
+    p, w, e := c.underlying.WriteGetPath(buffer)
+	return &WriteResult { BytesWritten: w, Path: &Path { underlying: p }, Err: e }
 }
 
 func (l Listener) Read(buffer []byte) *ReadResult {
-    n, a, e := l.underlying.ReadFrom(buffer)
+    n, a, p, e := l.underlying.ReadFromPath(buffer)
     
-    return &ReadResult{n, &UDPAddress{ underlying: a.(pan.UDPAddr) }, e}
+    return &ReadResult{n, &UDPAddress{ underlying: a }, &Path{underlying: p}, e}
+}
+
+func (l Listener) GetLocalAddress() *UDPAddress {
+    return &UDPAddress{ underlying: l.underlying.LocalAddr().(pan.UDPAddr) }
 }
 
 func (c Connection) Close() {

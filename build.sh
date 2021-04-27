@@ -67,6 +67,16 @@ xcodebuild -create-xcframework -library .gomobilebuild/SCIONDarwinIOS.framework/
 
 #xcodebuild -create-xcframework -library .gomobilebuild/SCIONDarwinSim.framework/Versions/A/SCIONDarwinSim.a -headers .gomobilebuild/SCIONDarwinSim.framework/Versions/A/Headers -library .gomobilebuild/SCIONDarwinIOS.framework/Versions/A/SCIONDarwinIOS.a -headers .gomobilebuild/SCIONDarwinIOS.framework/Versions/A/Headers -library .gomobilebuild/SCIONDarwinCatalyst.framework/Versions/A/SCIONDarwinCatalyst.a -headers .gomobilebuild/SCIONDarwinCatalyst.framework/Versions/A/Headers -library _SCIONDarwinMacFat.a -headers .gomobilebuild/SCIONDarwinMac.framework/Versions/A/Headers -output _SCIONDarwin.xcframework && rm -rf SCIONDarwin.xcframework && mv _SCIONDarwin.xcframework SCIONDarwin.xcframework
 
+echo "Adding module map"
+
+cat << EOF > SCIONDarwin.xcframework/module.modulemap
+module SCIONDarwin {
+  umbrella header "ios-arm64/Headers/_SCIONDarwinIOS.h"
+  export *
+  module * { export * }
+}
+EOF
+
 rm _SCIONDarwinMacFat.a
 
 echo Done

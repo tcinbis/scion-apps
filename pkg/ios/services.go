@@ -3,6 +3,7 @@ package ios
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/scionproto/scion/go/cs/config"
@@ -121,4 +122,12 @@ func realMain() error {
 	runSciond()
 
 	return nil
+}
+
+func SetDispatcherSocket(path string) error {
+	return os.Setenv("SCION_DISPATCHER_SOCKET", path)
+}
+
+func SetSciondAddress(addr string) error {
+	return os.Setenv("SCION_DAEMON_ADDRESS", addr)
 }
