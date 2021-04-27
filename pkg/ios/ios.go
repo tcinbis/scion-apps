@@ -115,10 +115,10 @@ func (p Path)GetFingerprint() string {
 	return string(p.underlying.Fingerprint)
 }
 
-func (p Path)RawReversed() (*PathRaw, error) {
-	r, err := p.underlying.ForwardingPath.Reversed()
+func (p Path)Reversed() (*Path, error) {
+	r, err := p.underlying.Reversed()
 	if err != nil { return nil, err }
-	return &PathRaw { underlying: r }, nil
+	return &Path { underlying: r }, nil
 }
 
 type UDPAddress struct {
