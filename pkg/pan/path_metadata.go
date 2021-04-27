@@ -16,6 +16,7 @@ package pan
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -90,6 +91,31 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 		LinkType:     append(pm.LinkType[:0:0], pm.LinkType...),
 		InternalHops: append(pm.InternalHops[:0:0], pm.InternalHops...),
 		Notes:        append(pm.Notes[:0:0], pm.Notes...),
+	}
+}
+
+func reverseAny(s interface{}) interface{} {
+    n := reflect.ValueOf(s).Len()
+    swap := reflect.Swapper(s)
+    for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
+        swap(i, j)
+    }
+	return s
+}
+
+func (pm *PathMetadata) Reversed() *PathMetadata {
+	if pm == nil {
+		return nil
+	}
+	return &PathMetadata{
+		Interfaces:   reverseAny(append(pm.Interfaces[:0:0], pm.Interfaces...)).([]PathInterface),
+		MTU:          pm.MTU,
+		Latency:      reverseAny(append(pm.Latency[:0:0], pm.Latency...)).([]time.Duration),
+		Bandwidth:    reverseAny(append(pm.Bandwidth[:0:0], pm.Bandwidth...)).([]uint64),
+		Geo:          reverseAny(append(pm.Geo[:0:0], pm.Geo...)).([]GeoCoordinates),
+		LinkType:     reverseAny(append(pm.LinkType[:0:0], pm.LinkType...)).([]LinkType),
+		InternalHops: reverseAny(append(pm.InternalHops[:0:0], pm.InternalHops...)).([]uint32),
+		Notes:        reverseAny(append(pm.Notes[:0:0], pm.Notes...)).([]string),
 	}
 }
 
