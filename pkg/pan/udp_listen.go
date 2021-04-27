@@ -47,6 +47,7 @@ type ReplySelector interface {
 type UDPListener interface {
 	net.PacketConn
 
+	ReadFromPath(b []byte) (int, UDPAddr, *Path, error)
 	MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error)
 }
 
@@ -117,8 +118,7 @@ func (c *listener) LocalAddr() net.Addr {
 }
 
 func (c *listener) ReadFrom(b []byte) (int, net.Addr, error) {
-	n, remote, path, err := c.ReadFromPath(b)
-	c.selector.OnPacketReceived(remote, c.local, path)
+	n, remote, _, err := c.ReadFromPath(b)
 	return n, remote, err
 }
 
@@ -128,6 +128,7 @@ func (c *listener) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 		return n, UDPAddr{}, nil, err
 	}
 	path, err := reversePathFromForwardingPath(remote.IA, c.local.IA, fwPath)
+	c.selector.OnPacketReceived(remote, c.local, path)
 	return n, remote, path, err
 }
 

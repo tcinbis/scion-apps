@@ -11,6 +11,8 @@ type Conn interface {
 	// WritePath writes a message to the remote address via the given path.
 	// This bypasses the path policy and selector used for Write.
 	WritePath(path *Path, b []byte) (int, error)
+	// Returns the path that was used
+	WriteGetPath(b []byte) (*Path, int, error)
 	// ReadPath reads a message and returns the (return-)path via which the
 	// message was received.
 	ReadPath(b []byte) (int, *Path, error)
@@ -41,14 +43,20 @@ func (c *connection) RemoteAddr() net.Addr {
 }
 
 func (c *connection) Write(b []byte) (int, error) {
+	_, w, e := c.WriteGetPath(b)
+	return w, e
+}
+
+func (c *connection) WriteGetPath(b []byte) (*Path, int, error) {
 	var path *Path
 	if c.local.IA != c.remote.IA {
 		path = c.Selector.Path()
 		if path == nil {
-			return 0, errNoPathTo(c.remote.IA)
+			return nil, 0, errNoPathTo(c.remote.IA)
 		}
 	}
-	return c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
+	w, e := c.WritePath(path, b)
+	return path, w, e
 }
 
 func (c *connection) WritePath(path *Path, b []byte) (int, error) {
