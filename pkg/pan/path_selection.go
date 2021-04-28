@@ -92,6 +92,38 @@ type DefaultSelector struct {
 	paths              []*Path
 	current            int
 	currentFingerprint PathFingerprint
+	pathFixed 		 	bool
+}
+
+func (s *DefaultSelector) FixPath(path *Path) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if path == nil {
+		s.pathFixed = false
+		s.current = 0
+		return true
+	}
+
+	for i, p := range s.paths {
+		if p.Fingerprint == path.Fingerprint {
+				s.current = i
+				s.pathFixed = true
+				return true
+		}
+	}
+
+	return false
+}
+
+func (s *DefaultSelector) AllPaths() []*Path {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if len(s.paths) == 0 {
+		return nil
+	}
+	return s.paths
 }
 
 func (s *DefaultSelector) Path() *Path {
@@ -110,14 +142,22 @@ func (s *DefaultSelector) SetPaths(paths []*Path) {
 
 	s.paths = paths
 	curr := 0
+	foundCurrentPath := false
 	if s.currentFingerprint != "" {
 		for i, p := range s.paths {
 			if p.Fingerprint == s.currentFingerprint {
 				curr = i
+				foundCurrentPath = true
 				break
 			}
 		}
 	}
+
+	if s.pathFixed && !foundCurrentPath {
+		fmt.Println("Path selector path was fixed but fixed path no longer exists after paths were updated. Exiting fixed path mode.")
+		s.pathFixed = false
+	}
+
 	s.current = curr
 	if len(s.paths) > 0 {
 		s.currentFingerprint = s.paths[s.current].Fingerprint
@@ -127,6 +167,8 @@ func (s *DefaultSelector) SetPaths(paths []*Path) {
 func (s *DefaultSelector) OnPathDown(pf PathFingerprint, pi PathInterface) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	if s.pathFixed { return }
 
 	if isInterfaceOnPath(s.paths[s.current], pi) || pf == s.currentFingerprint {
 		fmt.Println("down:", s.current, len(s.paths))
