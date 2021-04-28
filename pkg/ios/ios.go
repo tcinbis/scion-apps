@@ -137,6 +137,7 @@ func (a UDPAddress) String() string {
 
 type Connection struct {
 	underlying pan.Conn
+	policy *pathPolicy
 }
 
 type Listener struct {
@@ -147,7 +148,7 @@ func DialUDP(destination *UDPAddress, policyFilter PathPolicyFilter) (*Connectio
 	policy := &pathPolicy { filter: policyFilter }
 	c, err := pan.DialUDP(context.Background(), nil, destination.underlying, policy, nil)
 	if err != nil { return nil, err }
-	return &Connection{ underlying: c }, nil
+	return &Connection{ underlying: c, policy: policy }, nil
 }
 
 func ListenUDP(port int) (*Listener, error) {
@@ -160,7 +161,7 @@ func (l Listener)MakeConnectionToRemote(remote *UDPAddress, policyFilter PathPol
 	policy := &pathPolicy { filter: policyFilter }
 	c, err := l.underlying.MakeConnectionToRemote(context.Background(), remote.underlying, policy, nil)
 	if err != nil { return nil, err}
-	return &Connection{ underlying: c }, nil
+	return &Connection{ underlying: c, policy: policy }, nil
 }
 
 type ReadResult struct {
@@ -203,6 +204,11 @@ func (l Listener) Read(buffer []byte) *ReadResult {
 
 func (l Listener) GetLocalAddress() *UDPAddress {
     return &UDPAddress{ underlying: l.underlying.LocalAddr().(pan.UDPAddr) }
+}
+
+/// Forces a re-evaluation of the policy. Use when the underlying PathPolicyFilter behavior changes
+func (c Connection) UpdatePolicy() {
+    c.underlying.SetPolicy(c.policy)
 }
 
 func (c Connection) Close() {
