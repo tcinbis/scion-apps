@@ -138,6 +138,7 @@ func (a UDPAddress) String() string {
 type Connection struct {
 	underlying pan.Conn
 	policy *pathPolicy
+	selector *pan.DefaultSelector
 }
 
 type Listener struct {
@@ -146,9 +147,10 @@ type Listener struct {
 
 func DialUDP(destination *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
 	policy := &pathPolicy { filter: policyFilter }
-	c, err := pan.DialUDP(context.Background(), nil, destination.underlying, policy, nil)
+	sel := &pan.DefaultSelector{}
+	c, err := pan.DialUDP(context.Background(), nil, destination.underlying, policy, sel)
 	if err != nil { return nil, err }
-	return &Connection{ underlying: c, policy: policy }, nil
+	return &Connection{ underlying: c, policy: policy, selector: sel }, nil
 }
 
 func ListenUDP(port int) (*Listener, error) {
@@ -157,11 +159,12 @@ func ListenUDP(port int) (*Listener, error) {
 	return &Listener{ underlying: l }, nil
 }
 
-func (l Listener)MakeConnectionToRemote(remote *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
+func (l Listener) MakeConnectionToRemote(remote *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
 	policy := &pathPolicy { filter: policyFilter }
-	c, err := l.underlying.MakeConnectionToRemote(context.Background(), remote.underlying, policy, nil)
+	sel := &pan.DefaultSelector{}
+	c, err := l.underlying.MakeConnectionToRemote(context.Background(), remote.underlying, policy, sel)
 	if err != nil { return nil, err}
-	return &Connection{ underlying: c, policy: policy }, nil
+	return &Connection{ underlying: c, policy: policy, selector: sel }, nil
 }
 
 type ReadResult struct {
@@ -208,7 +211,24 @@ func (l Listener) GetLocalAddress() *UDPAddress {
 
 /// Forces a re-evaluation of the policy. Use when the underlying PathPolicyFilter behavior changes
 func (c Connection) UpdatePolicy() {
-    c.underlying.SetPolicy(c.policy)
+	c.underlying.SetPolicy(c.policy)
+}
+
+func (c Connection) GetPaths() []*Path {
+	paths := c.selector.AllPaths()
+	sl := make([]*Path, len(paths))
+	for i := 0; i < len(paths); i++ {
+		sl[i] = &Path { underlying: paths[i] }
+	}
+	return sl
+}
+
+func (c Connection) FixPath(path *Path) bool {
+	return c.selector.FixPath(path.underlying)
+}
+
+func (c Connection) GetCurrentPath(path *Path) *Path {
+	return &Path { underlying: c.selector.Path() }
 }
 
 func (c Connection) Close() {
