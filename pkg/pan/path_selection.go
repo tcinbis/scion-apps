@@ -14,19 +14,34 @@ type pathRefreshSubscriber struct {
 	target Selector
 }
 
-func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, policy Policy,
-	target Selector) (*pathRefreshSubscriber, error) {
-
+func pathRefreshSubscriberMake(remote UDPAddr, policy Policy,
+	target Selector) *pathRefreshSubscriber {
 	s := &pathRefreshSubscriber{
 		target: target,
 		policy: policy,
 		remote: remote,
 	}
-	paths, err := pool.subscribe(ctx, remote.IA, s)
+	
+	return s
+}
+
+func (s *pathRefreshSubscriber) attach(ctx context.Context) error {
+	paths, err := pool.subscribe(ctx, s.remote.IA, s)
 	if err != nil {
-		return nil, nil
+		return err
 	}
 	s.setFiltered(paths)
+	return nil
+}
+
+func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, policy Policy,
+	target Selector) (*pathRefreshSubscriber, error) {
+
+	s := pathRefreshSubscriberMake(remote, policy, target)
+
+	err := s.attach(ctx)
+	if (err != nil) { return nil, err }
+
 	return s, nil
 }
 
