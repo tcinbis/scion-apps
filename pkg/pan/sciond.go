@@ -169,7 +169,11 @@ func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]*Path, err
 	flags := daemon.PathReqFlags{Refresh: false, Hidden: false}
 	snetPaths, err := h.sciond.Paths(ctx, addr.IA(dst), addr.IA{}, flags)
 	if err != nil {
+		fmt.Println("Got error from sciond");
 		return nil, err
+	}
+	if len(snetPaths) == 0 {
+		fmt.Println("Got empty paths from sciond");
 	}
 	paths := make([]*Path, len(snetPaths))
 	for i, p := range snetPaths {

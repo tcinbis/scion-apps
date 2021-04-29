@@ -138,7 +138,7 @@ func (a UDPAddress) String() string {
 type Connection struct {
 	underlying pan.Conn
 	policy *pathPolicy
-	selector *pan.DefaultSelector
+	selector *defaultSelector
 }
 
 type Listener struct {
@@ -147,7 +147,7 @@ type Listener struct {
 
 func DialUDP(destination *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
 	policy := &pathPolicy { filter: policyFilter }
-	sel := &pan.DefaultSelector{}
+	sel := &defaultSelector{}
 	c, err := pan.DialUDP(context.Background(), nil, destination.underlying, policy, sel)
 	if err != nil { return nil, err }
 	return &Connection{ underlying: c, policy: policy, selector: sel }, nil
@@ -161,7 +161,7 @@ func ListenUDP(port int) (*Listener, error) {
 
 func (l Listener) MakeConnectionToRemote(remote *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
 	policy := &pathPolicy { filter: policyFilter }
-	sel := &pan.DefaultSelector{}
+	sel := &defaultSelector{}
 	c, err := l.underlying.MakeConnectionToRemote(context.Background(), remote.underlying, policy, sel)
 	if err != nil { return nil, err}
 	return &Connection{ underlying: c, policy: policy, selector: sel }, nil
@@ -178,6 +178,10 @@ type WriteResult struct {
     BytesWritten int
 	Path *Path
     Err error
+}
+
+func (c Connection) SetPathSelectorObserver(observer SelectorObserver) {
+    c.selector.observer = observer
 }
 
 func (c Connection) GetRemoteAddress() *UDPAddress {
@@ -214,20 +218,22 @@ func (c Connection) UpdatePolicy() {
 	c.underlying.SetPolicy(c.policy)
 }
 
-func (c Connection) GetPaths() []*Path {
-	paths := c.selector.AllPaths()
-	sl := make([]*Path, len(paths))
-	for i := 0; i < len(paths); i++ {
-		sl[i] = &Path { underlying: paths[i] }
-	}
-	return sl
+func (c Connection) GetPaths() *PathCollection {
+	return &PathCollection{ underlying: c.selector.AllPaths() }
 }
 
 func (c Connection) FixPath(path *Path) bool {
-	return c.selector.FixPath(path.underlying)
+	if path == nil {
+		return c.selector.FixPath(nil, false)
+	}
+	return c.selector.FixPath(path.underlying, false) // false here can lead to undefined behavior but we will assume that no bad values are entered... Better for performance like this
 }
 
-func (c Connection) GetCurrentPath(path *Path) *Path {
+func (c Connection) IsPathFixed() bool {
+	return c.selector.IsPathFixed()
+}
+
+func (c Connection) GetCurrentPath() *Path {
 	return &Path { underlying: c.selector.Path() }
 }
 
