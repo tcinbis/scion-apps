@@ -188,7 +188,7 @@ func (a pathHopSet) subsetOf(b pathHopSet) bool {
 	return true
 }
 
-func isInterfaceOnPath(p *Path, pi PathInterface) bool {
+func IsInterfaceOnPath(p *Path, pi PathInterface) bool {
 	for _, c := range p.Metadata.Interfaces {
 		if c == pi {
 			return true

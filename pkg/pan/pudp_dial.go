@@ -151,7 +151,7 @@ func (c *pudpController) OnPathDown(pf PathFingerprint, pi PathInterface) {
 	defer c.mutex.Unlock()
 
 	if c.current != nil &&
-		(isInterfaceOnPath(c.current, pi) || pf == c.current.Fingerprint) {
+		(IsInterfaceOnPath(c.current, pi) || pf == c.current.Fingerprint) {
 		panic("not implemented") // TODO: Implement
 	}
 }
