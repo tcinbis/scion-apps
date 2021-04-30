@@ -194,19 +194,35 @@ func (c Connection) GetLocalAddress() *UDPAddress {
 
 func (c Connection) Read(buffer []byte) *ReadResult {
     n, p, e := c.underlying.ReadPath(buffer)
-    
-    return &ReadResult{n, c.GetRemoteAddress(), &Path{underlying: p}, e}
+    var pp *Path
+	if p != nil {
+		 pp = &Path{underlying: p}
+	} else {
+		pp = nil
+	}
+    return &ReadResult{n, c.GetRemoteAddress(), pp, e}
 }
 
 func (c Connection) Write(buffer []byte) *WriteResult {
     p, w, e := c.underlying.WriteGetPath(buffer)
-	return &WriteResult { BytesWritten: w, Path: &Path { underlying: p }, Err: e }
+	var pp *Path
+	if p != nil {
+		 pp = &Path{underlying: p}
+	} else {
+		pp = nil
+	}
+	return &WriteResult { BytesWritten: w, Path: pp, Err: e }
 }
 
 func (l Listener) Read(buffer []byte) *ReadResult {
     n, a, p, e := l.underlying.ReadFromPath(buffer)
-    
-    return &ReadResult{n, &UDPAddress{ underlying: a }, &Path{underlying: p}, e}
+    var pp *Path
+	if p != nil {
+		 pp = &Path{underlying: p}
+	} else {
+		pp = nil
+	}
+    return &ReadResult{n, &UDPAddress{ underlying: a }, pp, e}
 }
 
 func (l Listener) GetLocalAddress() *UDPAddress {
@@ -219,7 +235,9 @@ func (c Connection) UpdatePolicy() {
 }
 
 func (c Connection) GetPaths() *PathCollection {
-	return &PathCollection{ underlying: c.selector.AllPaths() }
+	u := c.selector.AllPaths()
+	if u == nil { return nil }
+	return &PathCollection{ underlying: u }
 }
 
 func (c Connection) FixPath(path *Path) bool {
@@ -234,6 +252,7 @@ func (c Connection) IsPathFixed() bool {
 }
 
 func (c Connection) GetCurrentPath() *Path {
+	if c.selector.Path() == nil { return nil }
 	return &Path { underlying: c.selector.Path() }
 }
 
