@@ -41,10 +41,10 @@ func main() {
 		err = runServer(int(*port))
 		check(err)
 	} else {
-		for {
+		//for {
 			err = runClient(*remoteAddr)
 			check(err)
-		}
+		//}
 	}
 }
 
@@ -100,11 +100,12 @@ func runClient(address string) error {
 		return err
 	}
 	defer conn.Close()
-
+	sent := 0
+	got := 0
 	go func() {
 		buffer := make([]byte, 16*1024)
 		for {
-			n, err := conn.Read(buffer)
+			/*n*/_, err := conn.Read(buffer)
 			if err != nil {
 				// TODO: There definitely needs to be a better way to check whether a connection is closed than this...
 				if strings.Contains(err.Error(), "use of closed network connection") {
@@ -113,19 +114,26 @@ func runClient(address string) error {
 				fmt.Println(err)
 				continue
 			}
-			data := buffer[:n]
-			fmt.Printf("Received reply: %s\n", data)
+			//data := buffer[:n]
+			got += 1
+//fmt.Printf("Received reply: %s\n", data)
 		}
 	}()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 40000; i++ {
 		//nBytes, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
-		nBytes, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
+		/*nBytes*/_, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes.\n", nBytes)
-		time.Sleep(1 * time.Second)
+		sent += 1
+		if (i % 5) == 0 {
+			fmt.Printf("Stats: sent %d acks %d lost %d loss %f%%\n", sent, got, sent - got, 100 * float64(sent - got) / float64(sent))
+		}
+		//fmt.Printf("Wrote %d bytes.\n", nBytes)
+		time.Sleep(time.Duration(5) * time.Millisecond)
 	}
+	time.Sleep(time.Duration(10000) * time.Millisecond)
+	fmt.Printf("Stats: sent %d acks %d lost %d loss %f%%\n", sent, got, sent - got, 100 * float64(sent - got) / float64(sent))
 	return nil
 }
 
