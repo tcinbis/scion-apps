@@ -89,13 +89,13 @@ func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, p
 		selector = &DefaultSelector{}
 	}
 
-	// If selector is not already populated with a path give it the reply path that we have
-	if selector.Path() == nil {
-		selector.SetPaths([]*Path {c.selector.ReplyPath(c.local, remote)})
-	}
-
-	var subscriber *pathRefreshSubscriber
+	var subscriber *pathRefreshSubscriber = nil
 	if remote.IA != c.local.IA {
+		// If selector is not already populated with a path give it the reply path that we have
+		if selector.Path() == nil {
+			selector.SetPaths([]*Path {c.selector.ReplyPath(c.local, remote)})
+		}
+		
 		subscriber = pathRefreshSubscriberMake(remote, policy, selector)
 		go func() {
     		err := subscriber.attach(ctx)

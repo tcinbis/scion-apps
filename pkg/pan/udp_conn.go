@@ -48,7 +48,7 @@ func (c *connection) Write(b []byte) (int, error) {
 }
 
 func (c *connection) WriteGetPath(b []byte) (*Path, int, error) {
-	var path *Path
+	var path *Path = nil
 	if c.local.IA != c.remote.IA {
 		path = c.Selector.Path()
 		if path == nil {

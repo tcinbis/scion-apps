@@ -189,6 +189,16 @@ func (a pathHopSet) subsetOf(b pathHopSet) bool {
 }
 
 func IsInterfaceOnPath(p *Path, pi PathInterface) bool {
+	if p.Metadata == nil {
+		return false;
+		// f, e := p.ForwardingPath.forwardingPathInfo()
+		// if e != nil { return false }
+		// for _, c := range f.interfaceIDs {
+		// 	if c == pi {
+		// 		return true
+		// 	}
+		// }
+	}
 	for _, c := range p.Metadata.Interfaces {
 		if c == pi {
 			return true

@@ -16,6 +16,7 @@ package pan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -73,11 +74,18 @@ func (c *baseUDPConn) SetWriteDeadline(t time.Time) error {
 
 func (c *baseUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
 	// assert:
-	if src.IA != path.Source {
-		panic("writeMsg: src.IA != path.Source")
-	}
-	if dst.IA != path.Destination {
-		panic("writeMsg: dst.IA != path.Destination")
+	if src.IA != dst.IA {
+		if path == nil {
+			return 0, errors.New("no path specified")
+		}
+		if src.IA != path.Source {
+			panic("writeMsg: src.IA != path.Source")
+		}
+		if dst.IA != path.Destination {
+			panic("writeMsg: dst.IA != path.Destination")
+		}
+	} else if path != nil {
+		return 0, errors.New("unexpectedly got path for intra AS packet")
 	}
 
 	var spath spath.Path
