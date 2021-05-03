@@ -62,6 +62,7 @@ func (s *defaultSelector) FixPath(path *pan.Path, check bool) bool {
 	}
 
 	if found {
+		s.pathFixed = true
 		s.setCurrent(path)
 	}
 
