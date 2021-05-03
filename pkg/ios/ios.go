@@ -9,6 +9,8 @@ import (
 import (
 	"context"
 	"net"
+
+	"github.com/scionproto/scion/go/lib/addr"
 )
 
 // Yo dawg I heard you like wrappers, so I put a....
@@ -135,6 +137,10 @@ func (a UDPAddress) String() string {
 	return a.underlying.String()
 }
 
+func (a UDPAddress) IsForeignTo(other *UDPAddress) bool {
+	return !addr.IA(a.underlying.IA).Equal(addr.IA(other.underlying.IA))
+}
+
 type Connection struct {
 	underlying pan.Conn
 	policy *pathPolicy
@@ -201,6 +207,11 @@ func (c Connection) Read(buffer []byte) *ReadResult {
 		pp = nil
 	}
     return &ReadResult{n, c.GetRemoteAddress(), pp, e}
+}
+
+func (c Connection) WritePath(buffer []byte, path *Path) *WriteResult {
+    w, e := c.underlying.WritePath(path.underlying, buffer)
+	return &WriteResult { BytesWritten: w, Path: path, Err: e }
 }
 
 func (c Connection) Write(buffer []byte) *WriteResult {
