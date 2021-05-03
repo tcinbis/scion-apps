@@ -8,6 +8,7 @@ import (
 )
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/scionproto/scion/go/lib/addr"
@@ -200,6 +201,10 @@ func (c Connection) GetLocalAddress() *UDPAddress {
 
 func (c Connection) Read(buffer []byte) *ReadResult {
     n, p, e := c.underlying.ReadPath(buffer)
+	if e != nil {
+		// wrap the error to curcumvent idiotic go error: panic: runtime error: hash of unhashable type serrors.basicError
+		return &ReadResult{0, nil, nil, errors.New(e.Error())}
+	}
     var pp *Path
 	if p != nil {
 		 pp = &Path{underlying: p}
@@ -211,11 +216,19 @@ func (c Connection) Read(buffer []byte) *ReadResult {
 
 func (c Connection) WritePath(buffer []byte, path *Path) *WriteResult {
     w, e := c.underlying.WritePath(path.underlying, buffer)
+	if e != nil {
+		// wrap the error to curcumvent idiotic go error: panic: runtime error: hash of unhashable type serrors.basicError
+		return &WriteResult{0, nil, errors.New(e.Error())}
+	}
 	return &WriteResult { BytesWritten: w, Path: path, Err: e }
 }
 
 func (c Connection) Write(buffer []byte) *WriteResult {
     p, w, e := c.underlying.WriteGetPath(buffer)
+	if e != nil {
+		// wrap the error to curcumvent idiotic go error: panic: runtime error: hash of unhashable type serrors.basicError
+		return &WriteResult{0, nil, errors.New(e.Error())}
+	}
 	var pp *Path
 	if p != nil {
 		 pp = &Path{underlying: p}
@@ -227,6 +240,10 @@ func (c Connection) Write(buffer []byte) *WriteResult {
 
 func (l Listener) Read(buffer []byte) *ReadResult {
     n, a, p, e := l.underlying.ReadFromPath(buffer)
+	if e != nil {
+		// wrap the error to curcumvent idiotic go error: panic: runtime error: hash of unhashable type serrors.basicError
+		return &ReadResult{0, nil, nil, errors.New(e.Error())}
+	}
     var pp *Path
 	if p != nil {
 		 pp = &Path{underlying: p}
