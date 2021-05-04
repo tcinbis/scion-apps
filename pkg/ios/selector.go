@@ -85,6 +85,9 @@ func (s *defaultSelector) Path() *pan.Path {
 
 func (s *defaultSelector) setCurrent(path *pan.Path) {
 	s.current = path
+	if path == nil {
+		s.pathFixed = false
+	}
 }
 
 func (s *defaultSelector) SetPaths(paths []*pan.Path) {
