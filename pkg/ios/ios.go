@@ -268,16 +268,16 @@ func (c Connection) GetPaths() *PathCollection {
 	return &PathCollection{ underlying: u }
 }
 
-func (c Connection) FixPath(path *Path) bool {
-	if path == nil {
-		return c.selector.FixPath(nil, false)
-	}
-	return c.selector.FixPath(path.underlying, false) // false here can lead to undefined behavior but we will assume that no bad values are entered... Better for performance like this
-}
+// func (c Connection) FixPath(path *Path) bool {
+// 	if path == nil {
+// 		return c.selector.FixPath(nil, false)
+// 	}
+// 	return c.selector.FixPath(path.underlying, false) // false here can lead to undefined behavior but we will assume that no bad values are entered... Better for performance like this
+// }
 
-func (c Connection) IsPathFixed() bool {
-	return c.selector.IsPathFixed()
-}
+// func (c Connection) IsPathFixed() bool {
+// 	return c.selector.IsPathFixed()
+// }
 
 func (c Connection) GetCurrentPath() *Path {
 	if c.selector.Path() == nil { return nil }
