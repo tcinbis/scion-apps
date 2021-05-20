@@ -103,7 +103,9 @@ func (r *refresher) refresh() {
 	for dstIA, subscribers := range r.subscribers {
 		poolEntry, _ := r.pool.entry(dstIA)
 		if r.shouldRefresh(now, poolEntry.earliestExpiry, poolEntry.lastQuery) {
-			paths, err := r.pool.queryPaths(context.Background(), dstIA)
+			// Don't give a hoot about the cancel function
+			ctx, _ := context.WithTimeout(context.Background(), 100 * time.Second)
+			paths, err := r.pool.queryPaths(ctx, dstIA)
 			if err != nil {
 				// ignore errors here. The idea is that there is probably a lot of time
 				// until this manifests as an actual problem to the application (i.e.
