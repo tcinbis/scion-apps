@@ -16,6 +16,7 @@ package shttp
 
 import (
 	"crypto/tls"
+	"github.com/lucas-clemente/quic-go"
 	"net"
 	"net/http"
 
@@ -31,7 +32,7 @@ type Server struct {
 
 // ListenAndServe listens for HTTPS connections on the SCION address addr and calls Serve
 // with handler to handle requests
-func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config) error {
+func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config, quicCfg *quic.Config) error {
 
 	scionServer := &Server{
 		Server: &http3.Server{
@@ -39,6 +40,7 @@ func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config) er
 				Addr:    addr,
 				Handler: handler,
 			},
+			QuicConfig: quicCfg,
 		},
 	}
 	scionServer.TLSConfig = tlsConfig
@@ -47,13 +49,14 @@ func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config) er
 
 // Serve creates a listener on conn and listens for HTTPS connections.
 // A new goroutine handles each request using handler
-func Serve(conn net.PacketConn, handler http.Handler) error {
+func Serve(conn net.PacketConn, handler http.Handler, quicCfg *quic.Config) error {
 
 	scionServer := &Server{
 		Server: &http3.Server{
 			Server: &http.Server{
 				Handler: handler,
 			},
+			QuicConfig: quicCfg,
 		},
 	}
 
