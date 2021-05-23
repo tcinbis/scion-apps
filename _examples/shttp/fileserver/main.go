@@ -35,5 +35,5 @@ func main() {
 		os.Stdout,
 		http.FileServer(http.Dir("")),
 	)
-	log.Fatal(shttp.ListenAndServe(fmt.Sprintf(":%d", *port), handler, nil))
+	log.Fatal(shttp.ListenAndServe(fmt.Sprintf(":%d", *port), handler, nil, nil))
 }
