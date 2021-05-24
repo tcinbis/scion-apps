@@ -32,10 +32,8 @@ type Server struct {
 	*http3.Server
 }
 
-// ListenAndServe listens for HTTPS connections on the SCION address addr and calls Serve
-// with handler to handle requests
-func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config, quicCfg *quic.Config) error {
-
+// Creates a new ScionServer which allows for more custom configuration of parameters
+func NewScionServer(addr string, handler http.Handler, tlsConfig *tls.Config, quicCfg *quic.Config) *Server {
 	scionServer := &Server{
 		Server: &http3.Server{
 			Server: &http.Server{
@@ -46,22 +44,20 @@ func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config, qu
 		},
 	}
 	scionServer.TLSConfig = tlsConfig
+	return scionServer
+}
+
+// ListenAndServe listens for HTTPS connections on the SCION address addr and calls Serve
+// with handler to handle requests
+func ListenAndServe(addr string, handler http.Handler, tlsConfig *tls.Config, quicCfg *quic.Config) error {
+	scionServer := NewScionServer(addr, handler, tlsConfig, quicCfg)
 	return scionServer.ListenAndServe()
 }
 
 // Serve creates a listener on conn and listens for HTTPS connections.
 // A new goroutine handles each request using handler
 func Serve(conn net.PacketConn, handler http.Handler, quicCfg *quic.Config) error {
-
-	scionServer := &Server{
-		Server: &http3.Server{
-			Server: &http.Server{
-				Handler: handler,
-			},
-			QuicConfig: quicCfg,
-		},
-	}
-
+	scionServer := NewScionServer("", handler, nil, quicCfg)
 	return scionServer.Serve(conn)
 }
 
