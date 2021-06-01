@@ -24,3 +24,5 @@ require (
 )
 
 replace github.com/scionproto/scion => github.com/netsec-ethz/scion v0.0.0-20210510083057-919619bc9d31
+
+replace github.com/lucas-clemente/quic-go v0.19.2 => github.com/tcinbis/quic-go v0.19.2-rc-2-flowtele
