@@ -31,10 +31,10 @@ const (
 	pathRefreshMinInterval = 10 * time.Second
 	// pathRefreshInterval is the refresh interval in case no paths are expiring, i.e. the interval
 	// in which new paths are discovered.
-	pathRefreshInterval = 5 * time.Minute
+	pathRefreshInterval = 3 * time.Hour
 	// pathExpiryRefreshLeadTime specifies when a refresh is triggered for a
 	// path, relative to its expiry.
-	pathExpiryRefreshLeadTime = 2 * time.Minute
+	pathExpiryRefreshLeadTime = 10 * time.Minute
 	// pathExpiryPruneLeadTime specifies when, relative to its expiry, a path
 	// that is no longer returned from a path query is dropped from the cache.
 	pathExpiryPruneLeadTime = pathRefreshMinInterval

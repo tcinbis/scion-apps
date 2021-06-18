@@ -120,9 +120,15 @@ func (c *baseUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, err
 		},
 	}
 
+	// start := time.Now()
 	c.writeMutex.Lock()
-	defer c.writeMutex.Unlock()
 	err := c.raw.WriteTo(pkt, nextHop)
+	c.writeMutex.Unlock()
+	// duration := time.Since(start)
+	// if duration > time.Millisecond * 1 {
+	// 	fmt.Println("raw send took long")
+	// 	fmt.Println(duration)
+	// }
 	if err != nil {
 		return 0, err
 	}

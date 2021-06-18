@@ -223,14 +223,15 @@ func (c Connection) WritePath(buffer []byte, path *Path) *WriteResult {
 	return &WriteResult { BytesWritten: w, Path: path, Err: e }
 }
 
-func (c Connection) Write(buffer []byte) *WriteResult {
+// Set wantUsedPath to save an extra allocation
+func (c Connection) Write(buffer []byte, wantUsedPath bool) *WriteResult {
     p, w, e := c.underlying.WriteGetPath(buffer)
 	if e != nil {
 		// wrap the error to curcumvent idiotic go error: panic: runtime error: hash of unhashable type serrors.basicError
 		return &WriteResult{0, nil, errors.New(e.Error())}
 	}
 	var pp *Path
-	if p != nil {
+	if p != nil && wantUsedPath {
 		 pp = &Path{underlying: p}
 	} else {
 		pp = nil

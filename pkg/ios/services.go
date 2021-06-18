@@ -2,18 +2,18 @@ package ios
 
 import (
 	"fmt"
-	"net/http"
+	// "net/http"
 	"os"
-	"time"
+	// "time"
 
 	"github.com/scionproto/scion/go/cs/config"
 	dispatcher "github.com/scionproto/scion/go/dispatcher"
 	libconfig "github.com/scionproto/scion/go/lib/config"
-	"github.com/scionproto/scion/go/lib/infra/modules/itopo"
-	"github.com/scionproto/scion/go/lib/log"
+	// "github.com/scionproto/scion/go/lib/infra/modules/itopo"
+	// "github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/serrors"
 	"github.com/scionproto/scion/go/pkg/app/launcher"
-	"github.com/scionproto/scion/go/pkg/service"
+	// "github.com/scionproto/scion/go/pkg/service"
 	sciond "github.com/scionproto/scion/go/sciond"
 	"github.com/spf13/viper"
 )
@@ -95,31 +95,27 @@ func runDispatcher() {
 	fmt.Printf("ERROR: Dispatcher terminated: %s\n", err)
 }
 
-func runSciond() {
+func RunSciond() {
 	err := sciond.Sciond_RealMain()
 	fmt.Printf("ERROR: Sciond terminated: %s\n", err)
 }
 
+// func SetUpStuff() {
+// 	statusPages := service.StatusPages{
+// 		"info":      service.NewInfoHandler(),
+// 		"daemon_config":    service.NewConfigHandler(sciond.Daemon_Config()),
+// 		"dispatcher_config":    service.NewConfigHandler(dispatcher.Dispatcher_Config()),
+// 		"topology":  itopo.TopologyHandler,
+// 		"log/level": log.ConsoleLevel.ServeHTTP,
+// 	}
+	
+// 	if err := statusPages.Register(http.DefaultServeMux, globalCfg.General.ID); err != nil {
+// 		return serrors.WrapStr("registering status pages", err)
+// 	}
+// }
+
 func realMain() error {
-	statusPages := service.StatusPages{
-		"info":      service.NewInfoHandler(),
-		"daemon_config":    service.NewConfigHandler(sciond.Daemon_Config()),
-		"dispatcher_config":    service.NewConfigHandler(dispatcher.Dispatcher_Config()),
-		"topology":  itopo.TopologyHandler,
-		"log/level": log.ConsoleLevel.ServeHTTP,
-	}
-	
-	if err := statusPages.Register(http.DefaultServeMux, globalCfg.General.ID); err != nil {
-		return serrors.WrapStr("registering status pages", err)
-	}
-
-	fmt.Println("Starting dispatcher")
-	go runDispatcher()
-	
-	time.Sleep(1)
-
-	fmt.Println("Starting daemon")
-	runSciond()
+	runDispatcher()
 
 	return nil
 }

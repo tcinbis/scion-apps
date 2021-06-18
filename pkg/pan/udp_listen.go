@@ -88,7 +88,7 @@ func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, p
 	if selector == nil {
 		selector = &DefaultSelector{}
 	}
-
+	fmt.Println("MakeConnectionToRemote called")
 	var subscriber *pathRefreshSubscriber = nil
 	if remote.IA != c.local.IA {
 		// If selector is not already populated with a path give it the reply path that we have

@@ -16,6 +16,7 @@ type pathRefreshSubscriber struct {
 
 func pathRefreshSubscriberMake(remote UDPAddr, policy Policy,
 	target Selector) *pathRefreshSubscriber {
+	fmt.Println("pathRefreshSubscriberMake called")
 	s := &pathRefreshSubscriber{
 		target: target,
 		policy: policy,
