@@ -50,7 +50,7 @@ func (self *PathCollection) GetPathAt(index int) *Path {
 }
 
 type PathPolicyFilter interface {
-	Sort(paths PathCollectionSource) PathCollectionSource
+	Sort(paths PathCollectionSource, context int64) PathCollectionSource
 }
 
 // implements pan.PathPolicy
@@ -62,9 +62,9 @@ type pathPolicy struct {
 // 	return &PathPolicy { filter: filter }
 // }
 
-func (self *pathPolicy) Filter(paths []*pan.Path) []*pan.Path {
+func (self *pathPolicy) Filter(paths []*pan.Path, context int64) []*pan.Path {
 	collection := &PathCollection { underlying: paths }
-	filtered := self.filter.Sort(collection)
+	filtered := self.filter.Sort(collection, context)
 	return PathCollectionSourceToSlice(filtered)
 }
 
@@ -259,8 +259,8 @@ func (l Listener) GetLocalAddress() *UDPAddress {
 }
 
 /// Forces a re-evaluation of the policy. Use when the underlying PathPolicyFilter behavior changes
-func (c Connection) UpdatePolicy() {
-	c.underlying.SetPolicy(c.policy)
+func (c Connection) UpdatePolicy(context int64) {
+	c.underlying.SetPolicy(c.policy, context)
 }
 
 func (c Connection) GetPaths() *PathCollection {

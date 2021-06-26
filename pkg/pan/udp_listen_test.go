@@ -14,76 +14,76 @@
 
 package pan
 
-import (
-	"testing"
+// import (
+// 	"testing"
 
-	"github.com/stretchr/testify/assert"
-)
+// 	"github.com/stretchr/testify/assert"
+// )
 
-func TestPathsMRU(t *testing.T) {
-	const maxSize = 3
-	cases := []struct {
-		name   string
-		before []string
-		insert string
-		after  []string
-	}{
-		{
-			name:   "nil",
-			before: nil,
-			insert: "a",
-			after:  []string{"a"},
-		},
-		{
-			name:   "empty",
-			before: []string{},
-			insert: "a",
-			after:  []string{"a"},
-		},
-		{
-			name:   "new, not full",
-			before: []string{"a", "b"},
-			insert: "c",
-			after:  []string{"c", "a", "b"},
-		},
-		{
-			name:   "existing, not full",
-			before: []string{"a", "b"},
-			insert: "b",
-			after:  []string{"b", "a"},
-		},
-		{
-			name:   "new, full",
-			before: []string{"a", "b", "c"},
-			insert: "d",
-			after:  []string{"d", "a", "b"},
-		},
-		{
-			name:   "existing, full, first",
-			before: []string{"a", "b", "c"},
-			insert: "a",
-			after:  []string{"a", "b", "c"},
-		},
-		{
-			name:   "existing, full, middle",
-			before: []string{"a", "b", "c"},
-			insert: "b",
-			after:  []string{"b", "a", "c"},
-		},
-		{
-			name:   "existing, full, last",
-			before: []string{"a", "b", "c"},
-			insert: "c",
-			after:  []string{"c", "a", "b"},
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			paths := testdataPathsFromStrings(c.before)
-			l := pathsMRU(paths)
-			l.insert(&Path{Fingerprint: PathFingerprint(c.insert)}, maxSize)
-			actual := stringsFromTestdataPaths(l)
-			assert.Equal(t, c.after, actual)
-		})
-	}
-}
+// func TestPathsMRU(t *testing.T) {
+// 	const maxSize = 3
+// 	cases := []struct {
+// 		name   string
+// 		before []string
+// 		insert string
+// 		after  []string
+// 	}{
+// 		{
+// 			name:   "nil",
+// 			before: nil,
+// 			insert: "a",
+// 			after:  []string{"a"},
+// 		},
+// 		{
+// 			name:   "empty",
+// 			before: []string{},
+// 			insert: "a",
+// 			after:  []string{"a"},
+// 		},
+// 		{
+// 			name:   "new, not full",
+// 			before: []string{"a", "b"},
+// 			insert: "c",
+// 			after:  []string{"c", "a", "b"},
+// 		},
+// 		{
+// 			name:   "existing, not full",
+// 			before: []string{"a", "b"},
+// 			insert: "b",
+// 			after:  []string{"b", "a"},
+// 		},
+// 		{
+// 			name:   "new, full",
+// 			before: []string{"a", "b", "c"},
+// 			insert: "d",
+// 			after:  []string{"d", "a", "b"},
+// 		},
+// 		{
+// 			name:   "existing, full, first",
+// 			before: []string{"a", "b", "c"},
+// 			insert: "a",
+// 			after:  []string{"a", "b", "c"},
+// 		},
+// 		{
+// 			name:   "existing, full, middle",
+// 			before: []string{"a", "b", "c"},
+// 			insert: "b",
+// 			after:  []string{"b", "a", "c"},
+// 		},
+// 		{
+// 			name:   "existing, full, last",
+// 			before: []string{"a", "b", "c"},
+// 			insert: "c",
+// 			after:  []string{"c", "a", "b"},
+// 		},
+// 	}
+// 	for _, c := range cases {
+// 		t.Run(c.name, func(t *testing.T) {
+// 			paths := testdataPathsFromStrings(c.before)
+// 			l := pathsMRU(paths)
+// 			l.insert(&Path{Fingerprint: PathFingerprint(c.insert)}, maxSize)
+// 			actual := stringsFromTestdataPaths(l)
+// 			assert.Equal(t, c.after, actual)
+// 		})
+// 	}
+// }

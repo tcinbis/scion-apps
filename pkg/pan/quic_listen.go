@@ -14,44 +14,44 @@
 
 package pan
 
-import (
-	"context"
-	"crypto/tls"
-	"net"
+// import (
+// 	"context"
+// 	"crypto/tls"
+// 	"net"
 
-	"github.com/lucas-clemente/quic-go"
-)
+// 	"github.com/lucas-clemente/quic-go"
+// )
 
-// closerListener is a wrapper around quic.Listener that always closes the
-// underlying conn when closing the session.
-type closerListener struct {
-	quic.Listener
-	conn net.PacketConn
-}
+// // closerListener is a wrapper around quic.Listener that always closes the
+// // underlying conn when closing the session.
+// type closerListener struct {
+// 	quic.Listener
+// 	conn net.PacketConn
+// }
 
-func (l closerListener) Close() error {
-	err := l.Listener.Close()
-	l.conn.Close()
-	return err
-}
+// func (l closerListener) Close() error {
+// 	err := l.Listener.Close()
+// 	l.conn.Close()
+// 	return err
+// }
 
-// ListenPort listens for QUIC connections on a SCION/UDP port.
-//
-// See note on wildcard addresses in the appnet package documentation.
-func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
-	tlsConf *tls.Config, quicConfig *quic.Config) (quic.Listener, error) {
+// // ListenPort listens for QUIC connections on a SCION/UDP port.
+// //
+// // See note on wildcard addresses in the appnet package documentation.
+// func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
+// 	tlsConf *tls.Config, quicConfig *quic.Config) (quic.Listener, error) {
 
-	conn, err := ListenUDP(ctx, local, selector)
-	if err != nil {
-		return nil, err
-	}
-	listener, err := quic.Listen(conn, tlsConf, quicConfig)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	return closerListener{
-		Listener: listener,
-		conn:     conn,
-	}, nil
-}
+// 	conn, err := ListenUDP(ctx, local, selector)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	listener, err := quic.Listen(conn, tlsConf, quicConfig)
+// 	if err != nil {
+// 		conn.Close()
+// 		return nil, err
+// 	}
+// 	return closerListener{
+// 		Listener: listener,
+// 		conn:     conn,
+// 	}, nil
+// }

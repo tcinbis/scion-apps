@@ -31,7 +31,7 @@ func (s *pathRefreshSubscriber) attach(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.setFiltered(paths)
+	s.setFiltered(paths, 0)
 	return nil
 }
 
@@ -51,22 +51,22 @@ func (s *pathRefreshSubscriber) Close() error {
 	return nil
 }
 
-func (s *pathRefreshSubscriber) setPolicy(policy Policy) {
+func (s *pathRefreshSubscriber) setPolicy(policy Policy, ctx int64) {
 	s.policy = policy
-	s.setFiltered(pool.cachedPaths(s.remote.IA))
+	s.setFiltered(pool.cachedPaths(s.remote.IA), ctx)
 }
 
 func (s *pathRefreshSubscriber) refresh(dst IA, paths []*Path) {
-	s.setFiltered(paths)
+	s.setFiltered(paths, 0)
 }
 
 func (s *pathRefreshSubscriber) OnPathDown(pf PathFingerprint, pi PathInterface) {
 	s.target.OnPathDown(pf, pi)
 }
 
-func (s *pathRefreshSubscriber) setFiltered(paths []*Path) {
+func (s *pathRefreshSubscriber) setFiltered(paths []*Path, ctx int64) {
 	if s.policy != nil {
-		paths = s.policy.Filter(paths)
+		paths = s.policy.Filter(paths, ctx)
 	}
 	s.target.SetPaths(paths)
 }

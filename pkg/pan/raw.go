@@ -193,7 +193,7 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 			IA:   IA(msg.IA),
 			IfID: IfID(msg.Interface),
 		}
-		fmt.Printf("Interface down %v\n", pi)
+		// fmt.Printf("Interface down %v\n", pi)
 		p, err := reversePathFromForwardingPath(
 			IA(pkt.Destination.IA), // the local IA
 			IA{},                   // original destination unknown, would require parsing the SCMP quote

@@ -1,8 +1,6 @@
 package ios
 
 import (
-	"fmt"
-
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 )
 
@@ -45,11 +43,12 @@ func (s *defaultSelector) SetPaths(paths []*pan.Path) {
 }
 
 func (s *defaultSelector) OnPathDown(pf pan.PathFingerprint, pi pan.PathInterface) {
-	fmt.Printf("Notified of path down fp: %v iface: %v\n", pf, pi)
+	// fmt.Printf("Notified of path down fp: %v iface: %v\n", pf, pi)
 	for _, path := range s.paths {
 		// fmt.Printf("Checking path %v, fp: %v\n", path, path.Fingerprint)
 		if pan.IsInterfaceOnPath(path, pi) || pf == path.Fingerprint {
-			fmt.Println("down:", path, len(s.paths))
+			// fmt.Println("down:", path, len(s.paths))
+			if s.observer == nil { return }
 			s.observer.PathDidGoDown(&Path { underlying: path })
 		}
 	}

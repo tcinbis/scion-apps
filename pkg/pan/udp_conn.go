@@ -7,7 +7,7 @@ type Conn interface {
 	net.Conn
 	// SetPolicy allows to set the path policy for paths used by Write, at any
 	// time.
-	SetPolicy(policy Policy)
+	SetPolicy(policy Policy, context int64)
 	// WritePath writes a message to the remote address via the given path.
 	// This bypasses the path policy and selector used for Write.
 	WritePath(path *Path, b []byte) (int, error)
@@ -28,9 +28,9 @@ type connection struct {
 	Selector   Selector
 }
 
-func (c *connection) SetPolicy(policy Policy) {
+func (c *connection) SetPolicy(policy Policy, context int64) {
 	if c.subscriber != nil {
-		c.subscriber.setPolicy(policy)
+		c.subscriber.setPolicy(policy, context)
 	}
 }
 
