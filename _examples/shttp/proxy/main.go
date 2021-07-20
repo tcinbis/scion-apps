@@ -41,14 +41,15 @@ func main() {
 		mux.Handle("/", httputil.NewSingleHostReverseProxy(u))
 	}
 
-	if lAddr, err := snet.ParseUDPAddr(*local); err == nil {
-		log.Printf("Listen on SCION %s\n", *local)
-		// ListenAndServe does not support listening on a complete SCION Address,
-		// Consequently, we only use the port (as seen in the server example)
-		log.Fatalf("%s", shttp.ListenAndServe(fmt.Sprintf(":%d", lAddr.Host.Port), mux, nil, nil))
-	} else {
-		log.Printf("Listen on HTTP %s\n", *local)
-		log.Fatalf("%s", http.ListenAndServe(*local, mux))
+	for {
+		if lAddr, err := snet.ParseUDPAddr(*local); err == nil {
+			log.Printf("Listen on SCION %s\n", *local)
+			// ListenAndServe does not support listening on a complete SCION Address,
+			// Consequently, we only use the port (as seen in the server example)
+			log.Printf("%s", shttp.ListenAndServe(fmt.Sprintf(":%d", lAddr.Host.Port), mux, nil, nil))
+		} else {
+			log.Printf("Listen on HTTP %s\n", *local)
+			log.Printf("%s", http.ListenAndServe(*local, mux))
+		}
 	}
-
 }

@@ -50,6 +50,8 @@ type UDPListener interface {
 
 	ReadFromPath(b []byte) (int, UDPAddr, *Path, error)
 	MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error)
+	GetSelector() ReplySelector
+	SetSelector(s ReplySelector)
 }
 
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
@@ -158,6 +160,14 @@ func (c *listener) Close() error {
 	// FIXME: multierror!
 	_ = c.selector.Close()
 	return c.baseUDPConn.Close()
+}
+
+func (c *listener) GetSelector() ReplySelector {
+	return c.selector
+}
+
+func (c *listener) SetSelector(s ReplySelector) {
+	c.selector = s
 }
 
 type DefaultReplySelector struct {
