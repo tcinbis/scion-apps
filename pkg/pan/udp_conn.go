@@ -98,7 +98,7 @@ func (c *connection) Close() error {
 	if c.subscriber != nil {
 		_ = c.subscriber.Close()
 	}
-	
+
 	if !c.isListener {
 		return c.baseUDPConn.Close()
 	}

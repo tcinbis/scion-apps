@@ -22,7 +22,7 @@ func pathRefreshSubscriberMake(remote UDPAddr, policy Policy,
 		policy: policy,
 		remote: remote,
 	}
-	
+
 	return s
 }
 
@@ -41,7 +41,9 @@ func openPathRefreshSubscriber(ctx context.Context, remote UDPAddr, policy Polic
 	s := pathRefreshSubscriberMake(remote, policy, target)
 
 	err := s.attach(ctx)
-	if (err != nil) { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }

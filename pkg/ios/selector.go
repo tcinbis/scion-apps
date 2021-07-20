@@ -14,8 +14,8 @@ type SelectorObserver interface {
 // DefaultSelector is beefed up version of pan.DefaultSelector
 type defaultSelector struct {
 	// mutex              	sync.Mutex
-	paths              	[]*pan.Path
-	observer 			SelectorObserver // nonnull!
+	paths    []*pan.Path
+	observer SelectorObserver // nonnull!
 }
 
 func (s *defaultSelector) AllPaths() []*pan.Path {
@@ -48,8 +48,10 @@ func (s *defaultSelector) OnPathDown(pf pan.PathFingerprint, pi pan.PathInterfac
 		// fmt.Printf("Checking path %v, fp: %v\n", path, path.Fingerprint)
 		if pan.IsInterfaceOnPath(path, pi) || pf == path.Fingerprint {
 			// fmt.Println("down:", path, len(s.paths))
-			if s.observer == nil { return }
-			s.observer.PathDidGoDown(&Path { underlying: path })
+			if s.observer == nil {
+				return
+			}
+			s.observer.PathDidGoDown(&Path{underlying: path})
 		}
 	}
 }

@@ -20,11 +20,11 @@ type Policy interface {
 	Filter(paths []*Path, ctx int64) []*Path
 }
 
-// type PolicyFunc func(paths []*Path) []*Path
+type PolicyFunc func(paths []*Path) []*Path
 
-// func (f PolicyFunc) Filter(paths []*Path) []*Path {
-// 	return f(paths)
-// }
+func (f PolicyFunc) Filter(paths []*Path, _ int64) []*Path {
+	return f(paths)
+}
 
 // // PolicyChain applies multiple policies in order.
 // type PolicyChain []Policy

@@ -57,8 +57,10 @@ func (p *Path) Reversed() (*Path, error) {
 	// FIXME: inefficient, decoding twice! Change this to decode and then both
 	// reverse and extract fw info
 	fw, err := p.ForwardingPath.Reversed()
-	if err != nil { return nil, err}
-	
+	if err != nil {
+		return nil, err
+	}
+
 	var m *PathMetadata
 	if p.Metadata != nil {
 		m = p.Metadata.Reversed()
@@ -162,7 +164,7 @@ func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, e
 		ForwardingPath: fwPath,
 		Expiry:         fpi.expiry,
 		Fingerprint:    fingerprint,
-		Metadata: nil,
+		Metadata:       nil,
 	}, nil
 }
 
@@ -277,7 +279,7 @@ func (s pathSequence) Fingerprint() PathFingerprint {
 // along the path.
 type PathFingerprint string
 
-func pathFingerprints(paths []*Path) []PathFingerprint {
+func pathFingerprints(paths []*Path) []PathFingerprint { //nolint
 	fingerprints := make([]PathFingerprint, len(paths))
 	for i, p := range paths {
 		fingerprints[i] = p.Fingerprint

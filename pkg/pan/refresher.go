@@ -16,6 +16,7 @@ package pan
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -104,14 +105,16 @@ func (r *refresher) refresh() {
 		poolEntry, _ := r.pool.entry(dstIA)
 		if r.shouldRefresh(now, poolEntry.earliestExpiry, poolEntry.lastQuery) {
 			// Don't give a hoot about the cancel function
-			ctx, _ := context.WithTimeout(context.Background(), 100 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 			paths, err := r.pool.queryPaths(ctx, dstIA)
+			cancel()
 			if err != nil {
 				// ignore errors here. The idea is that there is probably a lot of time
 				// until this manifests as an actual problem to the application (i.e.
 				// when the paths actually expire).
 				// TODO: check whether there are errors that could be handled, like try to reconnect
 				// to sciond or something like that.
+				fmt.Printf("Error while refreshing: %v\n", err)
 				continue
 			}
 			for _, subscriber := range subscribers {

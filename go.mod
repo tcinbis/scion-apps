@@ -28,5 +28,3 @@ replace github.com/scionproto/scion => github.com/netsec-ethz/scion v0.0.0-20210
 replace github.com/lucas-clemente/quic-go => github.com/tcinbis/quic-go v0.21.0-flowtele-rc-1
 
 //replace github.com/lucas-clemente/quic-go => ../quic-go
-
-

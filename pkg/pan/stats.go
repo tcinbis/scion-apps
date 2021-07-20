@@ -83,6 +83,7 @@ func (s *pathStatsDB) RegisterLatency(p PathFingerprint, latency time.Duration) 
 func FirstMoreAlive(p *Path, paths []*Path) int {
 	return stats.FirstMoreAlive(p, paths)
 }
+
 // FirstMoreAlive returns the index of the first path in paths that is strictly "more
 // alive" than p, or -1 if there is none.
 // A path is considered to be more alive if it does not contain any of p's interfaces that

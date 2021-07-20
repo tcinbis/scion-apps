@@ -84,7 +84,7 @@ type listener struct {
 	selector ReplySelector
 }
 
-func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error) {
+func (c *listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error) {
 	if selector == nil {
 		selector = &DefaultSelector{}
 	}
@@ -93,12 +93,12 @@ func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, p
 	if remote.IA != c.local.IA {
 		// If selector is not already populated with a path give it the reply path that we have
 		if selector.Path() == nil {
-			selector.SetPaths([]*Path {c.selector.ReplyPath(c.local, remote)})
+			selector.SetPaths([]*Path{c.selector.ReplyPath(c.local, remote)})
 		}
-		
+
 		subscriber = pathRefreshSubscriberMake(remote, policy, selector)
 		go func() {
-    		err := subscriber.attach(ctx)
+			err := subscriber.attach(ctx)
 			if err != nil {
 				fmt.Printf("Failed to attach path refresh subscriber for listener-connection %v\n", err)
 			}
@@ -107,11 +107,11 @@ func (c* listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, p
 
 	return &connection{
 		baseUDPConn: &c.baseUDPConn,
-		isListener: true,
-		local:      c.local,
-		remote:     remote,
-		subscriber: subscriber,
-		Selector:   selector,
+		isListener:  true,
+		local:       c.local,
+		remote:      remote,
+		subscriber:  subscriber,
+		Selector:    selector,
 	}, nil
 }
 

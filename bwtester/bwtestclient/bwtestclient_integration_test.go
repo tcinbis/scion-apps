@@ -32,8 +32,8 @@ func TestIntegrationBwtestclient(t *testing.T) {
 	if err := integration.Init(name); err != nil {
 		t.Fatalf("Failed to init: %s\n", err)
 	}
-  clientCmd := integration.AppBinPath(clientBin)
-  serverCmd := integration.AppBinPath(serverBin)
+	clientCmd := integration.AppBinPath(clientBin)
+	serverCmd := integration.AppBinPath(serverBin)
 
 	// Common arguments
 	cmnArgs := []string{}

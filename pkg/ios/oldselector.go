@@ -10,7 +10,7 @@ import (
 type OldSelectorObserver interface {
 	PathsWillChange()
 	PathsDidChange()
-	
+
 	CurrentPathWillChange()
 	CurrentPathDidChange()
 
@@ -18,12 +18,12 @@ type OldSelectorObserver interface {
 }
 
 // DefaultSelector is beefed up version of pan.DefaultSelector
-type oldDefaultSelector struct {
-	mutex              	sync.Mutex
-	paths              	[]*pan.Path
-	current            	*pan.Path
-	pathFixed 		 	bool
-	observer 			OldSelectorObserver
+type oldDefaultSelector struct { // nolint
+	mutex     sync.Mutex
+	paths     []*pan.Path
+	current   *pan.Path
+	pathFixed bool
+	observer  OldSelectorObserver
 }
 
 func (s *oldDefaultSelector) IsPathFixed() bool {
@@ -31,11 +31,13 @@ func (s *oldDefaultSelector) IsPathFixed() bool {
 }
 
 func (s *oldDefaultSelector) FixPath(path *pan.Path, check bool) bool {
-	if s.observer != nil { s.observer.CurrentPathWillChange() }
+	if s.observer != nil {
+		s.observer.CurrentPathWillChange()
+	}
 	s.mutex.Lock()
 	defer func() {
 		s.mutex.Unlock()
-		if s.observer != nil { 
+		if s.observer != nil {
 			s.observer.CurrentPathDidChange()
 		}
 	}()
@@ -98,7 +100,7 @@ func (s *oldDefaultSelector) SetPaths(paths []*pan.Path) {
 	s.mutex.Lock()
 	defer func() {
 		s.mutex.Unlock()
-		if s.observer != nil { 
+		if s.observer != nil {
 			s.observer.PathsDidChange()
 			s.observer.CurrentPathDidChange()
 		}
@@ -133,13 +135,15 @@ func (s *oldDefaultSelector) OnPathDown(pf pan.PathFingerprint, pi pan.PathInter
 	currentPathDown := false
 	s.mutex.Lock()
 	defer func() {
-		s.mutex.Unlock();
+		s.mutex.Unlock()
 		if currentPathDown && s.observer != nil {
 			s.observer.CurrentPathDidGoDown()
 		}
 	}()
 
-	if s.pathFixed { return }
+	if s.pathFixed {
+		return
+	}
 
 	if pan.IsInterfaceOnPath(s.current, pi) || pf == s.current.Fingerprint {
 		currentPathDown = true

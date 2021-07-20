@@ -38,11 +38,10 @@ func main() {
 		os.Exit(2)
 	}
 
-	policy := pan.PolicyChain{
-		pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
-			return paths[:3]
-		}),
-	}
+	policy := pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
+		return paths[:3]
+	})
+
 	// Create a standard server with our custom RoundTripper
 	c := &http.Client{
 		Transport: shttp.NewRoundTripper(policy, &tls.Config{InsecureSkipVerify: true}, nil),
@@ -65,11 +64,11 @@ func main() {
 
 	// Set Policy: stupid example just to show that it works, re-initialize the
 	// interactive selection so it will prompt again, just to show that it works:
-	c.Transport.(*shttp.RoundTripper).SetPolicy(
-		&pan.InteractiveSelection{
-			Prompter: pan.CommandlinePrompter{},
-		},
-	)
+	//c.Transport.(*shttp.RoundTripper).SetPolicy(
+	//	&pan.InteractiveSelection{
+	//		Prompter: pan.CommandlinePrompter{},
+	//	},
+	//)
 	start = time.Now()
 	query = fmt.Sprintf("https://%s/form", *serverAddrStr)
 	resp, err = c.Post(
