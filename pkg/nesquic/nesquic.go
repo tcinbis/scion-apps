@@ -104,7 +104,7 @@ func (mpq *MPQuic) CloseWithError(code quic.ErrorCode, desc string) error {
 	// TODO(matzf) return all errors (multierr)
 	if mpq.Session != nil {
 		if err := mpq.Session.CloseWithError(code, desc); err != nil {
-			logger.Warn("Error closing QUIC session", "err", err)
+			logger.Error("Error closing QUIC session", "err", err)
 		}
 	}
 	close(mpq.stop)
@@ -200,7 +200,7 @@ func raceDial(ctx context.Context, conn *snet.Conn,
 			} else {
 				// Dial succeeded without cancelling and not first? Unlucky, just close this session.
 				// XXX(matzf) wrong layer; error code is supposed to be application layer
-				_ = result.session.CloseWithError(quic.ErrorCode(0), "")
+				_ = result.session.CloseWithError(quic.ApplicationErrorCode(0), "")
 			}
 		} else {
 			errs = append(errs, result.err)

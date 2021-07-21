@@ -60,7 +60,7 @@ func (mpq *MPQuic) handleRevocation(sRevInfo *path_mgmt.SignedRevInfo) bool {
 		}
 	} else {
 		// Ignore expired revocations
-		logger.Trace("Processing revocation", "action", "Ignoring expired revocation.")
+		logger.Debug("Processing revocation", "action", "Ignoring expired revocation.")
 	}
 	return activePathRevoked
 }

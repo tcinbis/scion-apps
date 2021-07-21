@@ -64,7 +64,7 @@ func (mpq *MPQuic) managePaths(firstSelect time.Time) {
 		case rev := <-mpq.revocationQ:
 			activePathRevoked := mpq.handleRevocation(rev)
 			if activePathRevoked {
-				logger.Trace("Processed revocation for active path")
+				logger.Debug("Processed revocation for active path")
 				mpq.selectPath(selectTimer)
 			}
 		case rtts := <-mpq.probeUpdate:
@@ -125,7 +125,7 @@ func (mpq *MPQuic) sendPings() {
 			if err != nil {
 				logger.Error("Error probing paths", "err", err, "errType", common.TypeOf(err))
 			} else {
-				logger.Trace("Paths pinged", "rtts", rtts, "seq", seq)
+				logger.Debug("Paths pinged", "rtts", rtts, "seq", seq)
 				mpq.probeUpdate <- rtts
 			}
 
