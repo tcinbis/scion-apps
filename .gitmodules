@@ -1,0 +1,6 @@
+[submodule "scion"]
+	path = scion
+	url = git@github.com:tcinbis/scion.git
+[submodule "quic-go"]
+	path = quic-go
+	url = git@github.com:tcinbis/quic-go.git
