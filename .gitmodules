@@ -1,4 +1,7 @@
 [submodule "scion"]
 	path = scion
-	url = https://github.com/JonasGessner/scion
+	url = git@github.com:tcinbis/scion.git
 	branch = scionlab
+[submodule "quic-go"]
+	path = quic-go
+	url = git@github.com:tcinbis/quic-go.git
