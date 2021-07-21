@@ -84,7 +84,7 @@ type MPQuic struct {
 	policy      Policy
 	paths       []*pathInfo
 	active      int
-	revocationQ chan *path_mgmt.SignedRevInfo
+	revocationQ chan *path_mgmt.RevInfo
 	probeUpdate chan []time.Duration
 	stop        chan struct{}
 }
@@ -100,7 +100,7 @@ func (mpq *MPQuic) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 }
 
 // Close closes the QUIC session.
-func (mpq *MPQuic) CloseWithError(code quic.ErrorCode, desc string) error {
+func (mpq *MPQuic) CloseWithError(code quic.ApplicationErrorCode, desc string) error {
 	// TODO(matzf) return all errors (multierr)
 	if mpq.Session != nil {
 		if err := mpq.Session.CloseWithError(code, desc); err != nil {
@@ -119,7 +119,7 @@ func Dial(raddr *snet.UDPAddr, host string, paths []snet.Path,
 
 	ctx := context.Background()
 	// Buffered channel, we can buffer up to 1 revocation per 20ms for 1s.
-	revocationQ := make(chan *path_mgmt.SignedRevInfo, 50)
+	revocationQ := make(chan *path_mgmt.RevInfo, 50)
 	revHandler := &revocationHandler{revocationQ}
 	conn, err := listenWithRevHandler(ctx, revHandler)
 	if err != nil {
@@ -180,7 +180,7 @@ func raceDial(ctx context.Context, conn *snet.Conn,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	results := make(chan indexedSessionOrError)
-	for i := range paths {
+	for i := range conns {
 		go func(id int) {
 			sess, err := quic.DialContext(ctx, conns[id], raddr, host, tlsConf, quicConf)
 			results <- indexedSessionOrError{id, sess, err}
@@ -190,7 +190,7 @@ func raceDial(ctx context.Context, conn *snet.Conn,
 	var firstID int
 	var firstSession quic.Session
 	var errs []error
-	for range paths {
+	for range conns {
 		result := <-results
 		if result.err == nil {
 			if firstSession == nil {
@@ -222,10 +222,9 @@ func listenWithRevHandler(ctx context.Context, revHandler snet.RevocationHandler
 	// it's not accessible so we have to make this weird detour of creating a new
 	// Network object.
 	defNetwork := appnet.DefNetwork()
-	network := snet.NewNetworkWithPR(
+	network := snet.NewNetwork(
 		defNetwork.IA,
 		defNetwork.Dispatcher,
-		nil, // unused, this will go away
 		revHandler,
 	)
 	// Analogous to appnet.Listen(nil), but need to hand roll because we are not
@@ -245,7 +244,7 @@ func makePathInfos(paths []snet.Path) []*pathInfo {
 
 		pi := &pathInfo{
 			path:        p,
-			fingerprint: p.Fingerprint(),
+			fingerprint: snet.Fingerprint(p),
 			rtt:         maxDuration,
 			bw:          0,
 		}
@@ -257,8 +256,12 @@ func makePathInfos(paths []snet.Path) []*pathInfo {
 // displayStats logs the collected metrics for all monitored paths.
 func (mpq *MPQuic) displayStats() {
 	for i, pathInfo := range mpq.paths {
+		expiry := "UNKOWN"
+		if meta := pathInfo.path.Metadata(); meta != nil {
+			expiry = time.Until(meta.Expiry).Round(time.Second).String()
+		}
 		logger.Debug(fmt.Sprintf("Path %v stats", i),
-			"expiry", time.Until(pathInfo.path.Expiry()).Round(time.Second),
+			"expiry", expiry,
 			"revoked", pathInfo.revoked,
 			"RTT", pathInfo.rtt,
 			"approxBW [Mbps]", pathInfo.bw/1e6)

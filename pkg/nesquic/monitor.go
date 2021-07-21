@@ -95,7 +95,7 @@ func (mpq *MPQuic) selectPath(selectTimer *time.Timer) {
 		logger.Debug("Changed active path", "active", i)
 	}
 
-	expiry := mpq.paths[i].path.Expiry()
+	expiry := mpq.paths[i].path.Metadata().Expiry
 	if expiry.Before(nextTime) {
 		nextTime = expiry
 	}
@@ -143,14 +143,14 @@ func (mpq *MPQuic) refreshPaths() {
 	}
 	freshPathSet := make(map[snet.PathFingerprint]snet.Path)
 	for _, p := range freshPaths {
-		freshPathSet[p.Fingerprint()] = p
+		freshPathSet[snet.Fingerprint(p)] = p
 	}
 
 	for _, pathInfo := range mpq.paths {
 		// Update paths for which fresh information was returned.
 		// Expired or revoked paths are missing from the fresh paths.
 		if fresh, ok := freshPathSet[pathInfo.fingerprint]; ok {
-			if fresh.Expiry().After(pathInfo.path.Expiry()) {
+			if fresh.Metadata().Expiry.After(pathInfo.path.Metadata().Expiry) {
 				// Update the path on the remote address
 				pathInfo.path = fresh
 				pathInfo.revoked = false
@@ -165,8 +165,8 @@ func (mpq *MPQuic) refreshPaths() {
 func (mpq *MPQuic) earliestPathExpiry() time.Time {
 	ret := maxTime
 	for _, pathInfo := range mpq.paths {
-		if pathInfo.path.Expiry().Before(ret) {
-			ret = pathInfo.path.Expiry()
+		if pathInfo.path.Metadata().Expiry.Before(ret) {
+			ret = pathInfo.path.Metadata().Expiry
 		}
 	}
 	return ret

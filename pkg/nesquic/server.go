@@ -57,24 +57,24 @@ func newReturnPathConn(conn *snet.Conn) *returnPathConn {
 }
 
 func (c *returnPathConn) ReadFrom(p []byte) (int, net.Addr, error) {
-	n, addr, err := c.PacketConn.ReadFrom(p)
+	n, pAddr, err := c.PacketConn.ReadFrom(p)
 	for _, ok := err.(*snet.OpError); err != nil && ok; {
-		n, addr, err = c.PacketConn.ReadFrom(p)
+		n, pAddr, err = c.PacketConn.ReadFrom(p)
 	}
 	if err == nil {
-		if saddr, ok := addr.(*snet.UDPAddr); ok {
+		if saddr, ok := pAddr.(*snet.UDPAddr); ok {
 			c.mutex.Lock()
 			defer c.mutex.Unlock()
-			c.paths[makeKey(saddr)] = returnPath{path: saddr.Path, nextHop: saddr.NextHop}
-			saddr.Path = nil // hide it,
+			c.paths[makeKey(saddr)] = returnPath{path: &saddr.Path, nextHop: saddr.NextHop}
+			saddr.Path = spath.Path{}
 			saddr.NextHop = nil
 		}
 	}
-	return n, addr, err
+	return n, pAddr, err
 }
 
 func (c *returnPathConn) WriteTo(p []byte, addr net.Addr) (int, error) {
-	if saddr, ok := addr.(*snet.UDPAddr); ok && saddr.Path == nil { // XXX && saddr.IA = localIA
+	if saddr, ok := addr.(*snet.UDPAddr); ok && saddr.Path.IsEmpty() { // XXX && saddr.IA = localIA
 		c.mutex.RLock()
 		defer c.mutex.RUnlock()
 
@@ -83,7 +83,7 @@ func (c *returnPathConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 			addr = &snet.UDPAddr{
 				IA:      saddr.IA,
 				Host:    saddr.Host,
-				Path:    retPath.path,
+				Path:    *retPath.path,
 				NextHop: retPath.nextHop,
 			}
 		}

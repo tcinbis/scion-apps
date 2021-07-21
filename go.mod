@@ -24,7 +24,6 @@ require (
 )
 
 //replace github.com/scionproto/scion => github.com/netsec-ethz/scion v0.0.0-20210705084436-3295af71a57a
-replace (
-	github.com/lucas-clemente/quic-go v0.19.2 => ./quic-go
-	github.com/scionproto/scion => ./scion
-)
+replace github.com/lucas-clemente/quic-go v0.21.1 => ./quic-go
+
+replace github.com/scionproto/scion => ./scion

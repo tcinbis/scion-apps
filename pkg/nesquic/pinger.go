@@ -16,16 +16,19 @@ package nesquic
 
 import (
 	"context"
+	"encoding/binary"
+	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
+	"github.com/scionproto/scion/go/lib/serrors"
+	"github.com/scionproto/scion/go/lib/topology/underlay"
+	"github.com/scionproto/scion/go/lib/util"
 	"net"
 	"time"
 
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/scmp"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath"
-	"github.com/scionproto/scion/go/lib/topology/overlay"
 )
 
 const replyBufferCapacity = 128
@@ -135,12 +138,15 @@ func (p *Pinger) readReplies(ctx context.Context,
 // The application ID must be unique on this host. The user is responsible for
 // choosing unique ids.
 func (p *Pinger) Ping(addr *snet.UDPAddr, id uint64, seq uint16) error {
-	pkt := newEchoRequest(p.laddr, addr, id, seq)
+	pkt, err := newEchoRequest(p.laddr, addr, id, seq)
+	if err != nil {
+		return err
+	}
 	nextHop := addr.NextHop
 	if nextHop == nil && p.laddr.IA.Equal(addr.IA) {
 		nextHop = &net.UDPAddr{
 			IP:   addr.Host.IP,
-			Port: overlay.EndhostPort,
+			Port: underlay.EndhostPort,
 			Zone: addr.Host.Zone,
 		}
 	}
@@ -172,30 +178,36 @@ type pingerSCMPHandler struct {
 }
 
 func (h *pingerSCMPHandler) Handle(pkt *snet.Packet) error {
-	hdr, ok := pkt.L4Header.(*scmp.Hdr)
-	if !ok {
-		return common.NewBasicError("scmp handler invoked with non-scmp packet", nil, "pkt", pkt)
-	}
-	pld, ok := pkt.Payload.(*scmp.Payload)
-	if !ok {
-		return common.NewBasicError("scmp handler invoked with non-scmp payload", nil,
-			"type", common.TypeOf(pkt.Payload))
+	if pkt.Payload == nil {
+		return serrors.New("no v2 payload found")
 	}
 
-	switch info := pld.Info.(type) {
-	case *scmp.InfoRevocation:
-		h.revHandler.RevokeRaw(context.Background(), info.RawSRev)
-		return nil
-	case *scmp.InfoEcho:
-		err := h.handleEcho(&pkt.Source, pkt.Path, hdr, info)
+	switch info := pkt.Payload.(type) {
+	case snet.SCMPExternalInterfaceDown:
+		h.revHandler.Revoke(context.Background(), &path_mgmt.RevInfo{
+			IfID:         common.IFIDType(info.Interface),
+			RawIsdas:     info.IA.IAInt(),
+			RawTimestamp: util.TimeToSecs(time.Now()),
+			RawTTL:       10,
+		})
+	case snet.SCMPInternalConnectivityDown:
+		h.revHandler.Revoke(context.Background(), &path_mgmt.RevInfo{
+			IfID:         common.IFIDType(info.Egress),
+			RawIsdas:     info.IA.IAInt(),
+			RawTimestamp: util.TimeToSecs(time.Now()),
+			RawTTL:       10,
+		})
+	case snet.SCMPEchoReply:
+		err := h.handleEcho(&pkt.Source, &pkt.Path, &info)
 		if err != nil {
-			logger.Debug("Ignoring invalid echo reply", "hdr", hdr, "src", pkt.Source, "info", info)
+			logger.Debug("Ignoring invalid echo reply", "src", pkt.Source, "info", info)
 		}
 		return nil
 	default:
-		logger.Debug("Ignoring scmp packet", "hdr", hdr, "src", pkt.Source, "info", info)
+		logger.Debug("Ignoring scmp packet", "src", pkt.Source, "info", info)
 		return nil
 	}
+	return nil
 }
 
 // handleEcho records the round trip time and inserts an EchoReply to the
@@ -203,19 +215,18 @@ func (h *pingerSCMPHandler) Handle(pkt *snet.Packet) error {
 // Note: the RTT in the returned struct is determined based on the time the
 // packet is processed. If this is handled delayed, e.g. because the packets
 // are not drained fast enough, the recorded RTT may be biased.
-func (h *pingerSCMPHandler) handleEcho(src *snet.SCIONAddress, path *spath.Path,
-	hdr *scmp.Hdr, info *scmp.InfoEcho) error {
+func (h *pingerSCMPHandler) handleEcho(src *snet.SCIONAddress, path *spath.Path, info *snet.SCMPEchoReply) error {
 
-	rtt := time.Since(hdr.Time()).Round(time.Microsecond)
+	rtt := time.Now().Sub(time.Unix(0, int64(binary.BigEndian.Uint64(info.Payload)))).Round(time.Microsecond)
 	err := path.Reverse()
 	if err != nil {
 		return err
 	}
-	addr := &snet.UDPAddr{IA: src.IA, Path: path, Host: &net.UDPAddr{IP: src.Host.IP()}}
+	addr := &snet.UDPAddr{IA: src.IA, Path: *path, Host: &net.UDPAddr{IP: src.Host.IP()}}
 	reply := EchoReply{
 		Addr: addr,
-		ID:   info.Id,
-		Seq:  info.Seq,
+		ID:   uint64(info.Identifier),
+		Seq:  info.SeqNumber,
 		RTT:  rtt,
 	}
 	select {
@@ -243,22 +254,30 @@ func listenPacketConn(ctx context.Context,
 		return nil, nil, err
 	}
 	laddr := &snet.UDPAddr{IA: localIA, Host: &net.UDPAddr{IP: localIP, Port: int(port)}}
-	return snet.NewSCIONPacketConn(dispConn, scmpHandler), laddr, nil
+	return snet.NewSCIONPacketConn(dispConn, scmpHandler, true), laddr, nil
 }
 
-func newEchoRequest(src, dst *snet.UDPAddr, id uint64, seq uint16) *snet.Packet {
+func newEchoRequest(src, dst *snet.UDPAddr, id uint64, seq uint16) (*snet.Packet, error) {
 
-	info := &scmp.InfoEcho{Id: id, Seq: seq}
-	meta := scmp.Meta{InfoLen: uint8(info.Len() / common.LineLen)}
-	pld := make(common.RawBytes, scmp.MetaLen+info.Len())
-	err := meta.Write(pld)
-	if err != nil {
-		panic(err)
+	var pld []byte
+	binary.BigEndian.PutUint64(pld, uint64(time.Now().UnixNano()))
+
+	if dst.Path.IsEmpty() && !src.IA.Equal(dst.IA) {
+		return nil, serrors.New("no path for remote ISD-AS", "local", src.IA, "remote", dst.IA)
 	}
-	_, err = info.Write(pld[scmp.MetaLen:])
-	if err != nil {
-		panic(err)
-	}
+
+	//info := &scmp.InfoEcho{Id: id, Seq: seq}
+	//meta := scmp.Meta{InfoLen: uint8(info.Len() / common.LineLen)}
+	//pld := make(common.RawBytes, scmp.MetaLen+info.Len())
+	//err := meta.Write(pld)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//_, err = info.Write(pld[scmp.MetaLen:])
+	//if err != nil {
+	//	panic(err)
+	//}
+
 	return &snet.Packet{
 		PacketInfo: snet.PacketInfo{
 			Source: snet.SCIONAddress{
@@ -270,14 +289,11 @@ func newEchoRequest(src, dst *snet.UDPAddr, id uint64, seq uint16) *snet.Packet 
 				Host: addr.HostFromIP(dst.Host.IP),
 			},
 			Path: dst.Path,
-			L4Header: scmp.NewHdr(
-				scmp.ClassType{
-					Class: scmp.C_General,
-					Type:  scmp.T_G_EchoRequest,
-				},
-				len(pld),
-			),
-			Payload: pld,
+			Payload: snet.SCMPEchoRequest{
+				Identifier: uint16(id),
+				SeqNumber:  seq,
+				Payload:    pld,
+			},
 		},
-	}
+	}, nil
 }

@@ -27,12 +27,11 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
-	"path"
 	"syscall"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/quictrace"
+	//"github.com/lucas-clemente/quic-go/quictrace"
 
 	"strings"
 
@@ -52,10 +51,10 @@ const (
 	ReplyMsg        = "boing!"
 	ModeServer      = "server"
 	ModeClient      = "client"
-	nextProto       = "boingboing"
+	nextProto       = "SCION"
 
-	errorNoError quic.ErrorCode = 0x100
-	errorTimeout quic.ErrorCode = 0x200
+	errorNoError quic.ApplicationErrorCode = 0x100
+	errorTimeout quic.StreamErrorCode      = 0x200
 )
 
 var (
@@ -84,6 +83,11 @@ func init() {
 }
 
 func main() {
+	logCfg := log.Config{Console: log.ConsoleConfig{Level: "debug"}}
+	if err := log.Setup(logCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error configuring logger. Exiting due to:%s\n", err)
+		os.Exit(-1)
+	}
 	validateFlags()
 	switch *mode {
 	case ModeClient:
@@ -138,7 +142,7 @@ func validateFlags() {
 }
 
 func LogFatal(msg string, a ...interface{}) {
-	log.Crit(msg, a...)
+	log.Error(msg, a...)
 	os.Exit(1)
 }
 
@@ -210,12 +214,12 @@ func (c *client) run(remote *snet.UDPAddr, paths []snet.Path) {
 		NextProtos:         []string{nextProto},
 	}
 
-	var tracer quictrace.Tracer
-	if *trace != "" {
-		tracer = quictrace.NewTracer()
-	}
+	//var tracer quictrace.Tracer
+	//if *trace != "" {
+	//	tracer = quictrace.NewTracer()
+	//}
 	quicConf := &quic.Config{
-		QuicTracer: tracer,
+		//QuicTracer: tracer,
 	}
 	var err error
 	if remote.IA == appnet.DefNetwork().IA {
@@ -223,6 +227,7 @@ func (c *client) run(remote *snet.UDPAddr, paths []snet.Path) {
 		// an existing path. Easy fallback, use normal appquic.
 		c.qsess, err = appquic.DialAddr(remote, "host:0", tlsConf, quicConf)
 	} else {
+		log.Debug(fmt.Sprintf("Using nesquic dial to %s", remote.String()))
 		c.qsess, err = nesquic.Dial(remote, "host:0", paths, tlsConf, quicConf)
 	}
 	if err != nil {
@@ -243,12 +248,12 @@ func (c *client) run(remote *snet.UDPAddr, paths []snet.Path) {
 	}()
 	c.read()
 
-	if tracer != nil {
-		err := exportTraces(tracer, *trace)
-		if err != nil {
-			log.Debug("Error while exporting QUIC trace", "err", err)
-		}
-	}
+	//if tracer != nil {
+	//	err := exportTraces(tracer, *trace)
+	//	if err != nil {
+	//		log.Debug("Error while exporting QUIC trace", "err", err)
+	//	}
+	//}
 
 	log.Info("Client run completed")
 }
@@ -347,7 +352,7 @@ func (s server) run() {
 	if err != nil {
 		LogFatal("Unable to listen", "err", err)
 	}
-	log.Info("Listening", "local", qsock.Addr())
+	fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, qsock.Addr())
 	for {
 		qsess, err := qsock.Accept(context.Background())
 		if err != nil {
@@ -413,19 +418,19 @@ func setSignalHandler(closer io.Closer) {
 	}()
 }
 
-func exportTraces(tracer quictrace.Tracer, dir string) error {
-	traces := tracer.GetAllTraces()
-	i := 0
-	for _, trace := range traces {
-		f, err := os.Create(path.Join(dir, fmt.Sprintf("trace_%d.qtr", i)))
-		if err != nil {
-			return err
-		}
-		if _, err := f.Write(trace); err != nil {
-			return err
-		}
-		log.Debug("Wrote QUIC trace file", "path", f.Name())
-		i += 1
-	}
-	return nil
-}
+//func exportTraces(tracer quictrace.Tracer, dir string) error {
+//	traces := tracer.GetAllTraces()
+//	i := 0
+//	for _, trace := range traces {
+//		f, err := os.Create(path.Join(dir, fmt.Sprintf("trace_%d.qtr", i)))
+//		if err != nil {
+//			return err
+//		}
+//		if _, err := f.Write(trace); err != nil {
+//			return err
+//		}
+//		log.Debug("Wrote QUIC trace file", "path", f.Name())
+//		i += 1
+//	}
+//	return nil
+//}
