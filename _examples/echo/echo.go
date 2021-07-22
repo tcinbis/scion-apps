@@ -42,8 +42,8 @@ func main() {
 		check(err)
 	} else {
 		//for {
-			err = runClient(*remoteAddr)
-			check(err)
+		err = runClient(*remoteAddr)
+		check(err)
 		//}
 	}
 }
@@ -78,7 +78,7 @@ func runServer(port int) error {
 		} else {
 			fmt.Printf("Received from known connection %s: %s\n", from, data)
 		}
-		
+
 		msg := fmt.Sprintf("take it back! %s", time.Now().Format("15:04:05.0"))
 		n, err = conn.Write([]byte(msg))
 		fmt.Printf("Wrote %d bytes.\n", n)
@@ -105,7 +105,7 @@ func runClient(address string) error {
 	go func() {
 		buffer := make([]byte, 16*1024)
 		for {
-			/*n*/_, err := conn.Read(buffer)
+			/*n*/ _, err := conn.Read(buffer)
 			if err != nil {
 				// TODO: There definitely needs to be a better way to check whether a connection is closed than this...
 				if strings.Contains(err.Error(), "use of closed network connection") {
@@ -116,24 +116,25 @@ func runClient(address string) error {
 			}
 			//data := buffer[:n]
 			got += 1
-//fmt.Printf("Received reply: %s\n", data)
+			//fmt.Printf("Received reply: %s\n", data)
 		}
 	}()
 	for i := 0; i < 40000; i++ {
 		//nBytes, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
-		/*nBytes*/_, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
+		/*nBytes*/
+		_, err := conn.Write([]byte(fmt.Sprintf("hello world %s", time.Now().Format("15:04:05.0"))))
 		if err != nil {
 			return err
 		}
 		sent += 1
 		if (i % 5) == 0 {
-			fmt.Printf("Stats: sent %d acks %d lost %d loss %f%%\n", sent, got, sent - got, 100 * float64(sent - got) / float64(sent))
+			fmt.Printf("Stats: sent %d acks %d lost %d loss %f%%\n", sent, got, sent-got, 100*float64(sent-got)/float64(sent))
 		}
 		//fmt.Printf("Wrote %d bytes.\n", nBytes)
 		time.Sleep(time.Duration(5) * time.Millisecond)
 	}
 	time.Sleep(time.Duration(10000) * time.Millisecond)
-	fmt.Printf("Stats: sent %d acks %d lost %d loss %f%%\n", sent, got, sent - got, 100 * float64(sent - got) / float64(sent))
+	fmt.Printf("Stats: sent %d acks %d lost %d loss %f%%\n", sent, got, sent-got, 100*float64(sent-got)/float64(sent))
 	return nil
 }
 

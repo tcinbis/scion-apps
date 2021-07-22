@@ -17,12 +17,13 @@ package pan
 import (
 	"errors"
 	"fmt"
+	"github.com/scionproto/scion/go/lib/addr"
 	"time"
 )
 
 var ErrNoPath = errors.New("no path")
 
-func errNoPathTo(ia IA) error {
+func errNoPathTo(ia addr.IA) error {
 	return fmt.Errorf("%w to %s", ErrNoPath, ia)
 }
 

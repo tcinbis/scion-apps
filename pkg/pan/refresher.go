@@ -17,16 +17,17 @@ package pan
 import (
 	"context"
 	"fmt"
+	"github.com/scionproto/scion/go/lib/addr"
 	"math/rand"
 	"time"
 )
 
 type refreshee interface {
-	refresh(dst IA, paths []*Path)
+	refresh(dst addr.IA, paths []*Path)
 }
 
 type refresher struct {
-	subscribers     map[IA][]refreshee
+	subscribers     map[addr.IA][]refreshee
 	pool            *pathPool
 	newSubscription chan bool
 }
@@ -34,13 +35,13 @@ type refresher struct {
 func makeRefresher(pool *pathPool) refresher {
 	return refresher{
 		pool:            pool,
-		subscribers:     make(map[IA][]refreshee),
+		subscribers:     make(map[addr.IA][]refreshee),
 		newSubscription: make(chan bool),
 	}
 }
 
 // subscribe for paths to dst.
-func (r *refresher) subscribe(ctx context.Context, dst IA, s refreshee) ([]*Path, error) {
+func (r *refresher) subscribe(ctx context.Context, dst addr.IA, s refreshee) ([]*Path, error) {
 	// BUG: oops, this will not inform subscribers of updated paths. Need to explicily check here
 	paths, err := r.pool.paths(ctx, dst)
 	if err != nil {
@@ -57,7 +58,7 @@ func (r *refresher) subscribe(ctx context.Context, dst IA, s refreshee) ([]*Path
 	return paths, nil
 }
 
-func (r *refresher) unsubscribe(ia IA, s refreshee) {
+func (r *refresher) unsubscribe(ia addr.IA, s refreshee) {
 	idx := -1
 	subs := r.subscribers[ia]
 	for i, v := range subs {

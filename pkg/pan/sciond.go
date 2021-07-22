@@ -30,7 +30,7 @@ import (
 )
 
 type scionHostContext struct {
-	ia            IA
+	ia            addr.IA
 	sciond        daemon.Connector
 	dispatcher    reliable.Dispatcher
 	hostInLocalAS net.IP
@@ -78,7 +78,7 @@ func initScionHostContext() (scionHostContext, error) {
 		return scionHostContext{}, err
 	}
 	return scionHostContext{
-		ia:            IA(localIA),
+		ia:            localIA,
 		sciond:        sciondConn,
 		dispatcher:    dispatcher,
 		hostInLocalAS: hostInLocalAS,
@@ -165,7 +165,7 @@ func defaultLocalAddr(local *net.UDPAddr) (*net.UDPAddr, error) {
 	return local, nil
 }
 
-func (h *scionHostContext) queryPaths(ctx context.Context, dst IA) ([]*Path, error) {
+func (h *scionHostContext) queryPaths(ctx context.Context, dst addr.IA) ([]*Path, error) {
 	flags := daemon.PathReqFlags{Refresh: false, Hidden: false}
 	snetPaths, err := h.sciond.Paths(ctx, addr.IA(dst), addr.IA{}, flags)
 	if err != nil {
@@ -207,7 +207,7 @@ func convertPathInterfaceSlice(spis []snet.PathInterface) []PathInterface {
 	pis := make([]PathInterface, len(spis))
 	for i, spi := range spis {
 		pis[i] = PathInterface{
-			IA:   IA(spi.IA),
+			IA:   spi.IA,
 			IfID: IfID(spi.ID),
 		}
 	}

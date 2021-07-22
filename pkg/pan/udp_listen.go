@@ -19,8 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync"
-	"time"
 )
 
 /*
@@ -35,27 +33,26 @@ import (
 	- a path aware application can use path-y API to explicitly reply without the reply path recording overhead
 */
 
-var errBadDstAddress error = errors.New("dst address not a UDPAddr")
+var errBadDstAddress = errors.New("dst address not a UDPAddr")
 
-// ReplySelector selects the reply path for WriteTo in a listener.
-type ReplySelector interface {
-	ReplyPath(src, dst UDPAddr) *Path
-	OnPacketReceived(src, dst UDPAddr, path *Path)
-	OnPathDown(PathFingerprint, PathInterface)
-	Close() error
-}
-
-type UDPListener interface {
+type Listener interface {
 	net.PacketConn
 
 	ReadFromPath(b []byte) (int, UDPAddr, *Path, error)
-	MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error)
+	//MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error)
 	GetSelector() ReplySelector
 	SetSelector(s ReplySelector)
 }
 
+type UDPListener struct {
+	baseUDPConn
+
+	local    UDPAddr
+	selector ReplySelector
+}
+
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
-	selector ReplySelector) (UDPListener, error) {
+	selector ReplySelector, multi bool) (Listener, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -63,14 +60,20 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	}
 
 	if selector == nil {
-		selector = NewDefaultReplySelector()
+		if multi {
+			fmt.Println("Using MultiReplySelector")
+			selector = NewMultiReplySelector(context.Background())
+		} else {
+			selector = NewDefaultReplySelector()
+		}
 	}
 	stats.subscribe(selector)
 	raw, slocal, err := openBaseUDPConn(ctx, local)
 	if err != nil {
 		return nil, err
 	}
-	return &listener{
+
+	return &UDPListener{
 		baseUDPConn: baseUDPConn{
 			raw: raw,
 		},
@@ -79,54 +82,47 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	}, nil
 }
 
-type listener struct {
-	baseUDPConn
+//func (c *UDPListener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error) {
+//	if selector == nil {
+//		selector = &DefaultSelector{}
+//	}
+//	fmt.Println("MakeConnectionToRemote called")
+//	var subscriber *pathRefreshSubscriber = nil
+//	if remote.IA != c.local.IA {
+//		// If selector is not already populated with a path give it the reply path that we have
+//		if selector.Path() == nil {
+//			selector.SetPaths([]*Path{c.selector.ReplyPath(c.local, remote)})
+//		}
+//
+//		subscriber = pathRefreshSubscriberMake(remote, policy, selector)
+//		go func() {
+//			err := subscriber.attach(ctx)
+//			if err != nil {
+//				fmt.Printf("Failed to attach path refresh subscriber for UDPListener-connection %v\n", err)
+//			}
+//		}()
+//	}
+//
+//	return &connection{
+//		baseUDPConn: &c.baseUDPConn,
+//		isListener:  true,
+//		local:       c.local,
+//		remote:      remote,
+//		subscriber:  subscriber,
+//		Selector:    selector,
+//	}, nil
+//}
 
-	local    UDPAddr
-	selector ReplySelector
-}
-
-func (c *listener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error) {
-	if selector == nil {
-		selector = &DefaultSelector{}
-	}
-	fmt.Println("MakeConnectionToRemote called")
-	var subscriber *pathRefreshSubscriber = nil
-	if remote.IA != c.local.IA {
-		// If selector is not already populated with a path give it the reply path that we have
-		if selector.Path() == nil {
-			selector.SetPaths([]*Path{c.selector.ReplyPath(c.local, remote)})
-		}
-
-		subscriber = pathRefreshSubscriberMake(remote, policy, selector)
-		go func() {
-			err := subscriber.attach(ctx)
-			if err != nil {
-				fmt.Printf("Failed to attach path refresh subscriber for listener-connection %v\n", err)
-			}
-		}()
-	}
-
-	return &connection{
-		baseUDPConn: &c.baseUDPConn,
-		isListener:  true,
-		local:       c.local,
-		remote:      remote,
-		subscriber:  subscriber,
-		Selector:    selector,
-	}, nil
-}
-
-func (c *listener) LocalAddr() net.Addr {
+func (c *UDPListener) LocalAddr() net.Addr {
 	return c.local
 }
 
-func (c *listener) ReadFrom(b []byte) (int, net.Addr, error) {
+func (c *UDPListener) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, remote, _, err := c.ReadFromPath(b)
 	return n, remote, err
 }
 
-func (c *listener) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
+func (c *UDPListener) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 	if err != nil {
 		return n, UDPAddr{}, nil, err
@@ -136,7 +132,7 @@ func (c *listener) ReadFromPath(b []byte) (int, UDPAddr, *Path, error) {
 	return n, remote, path, err
 }
 
-func (c *listener) WriteTo(b []byte, dst net.Addr) (int, error) {
+func (c *UDPListener) WriteTo(b []byte, dst net.Addr) (int, error) {
 	sdst, ok := dst.(UDPAddr)
 	if !ok {
 		return 0, errBadDstAddress
@@ -151,114 +147,21 @@ func (c *listener) WriteTo(b []byte, dst net.Addr) (int, error) {
 	return c.WriteToPath(b, sdst, path)
 }
 
-func (c *listener) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
+func (c *UDPListener) WriteToPath(b []byte, dst UDPAddr, path *Path) (int, error) {
 	return c.baseUDPConn.writeMsg(c.local, dst, path, b)
 }
 
-func (c *listener) Close() error {
+func (c *UDPListener) Close() error {
 	stats.unsubscribe(c.selector)
 	// FIXME: multierror!
 	_ = c.selector.Close()
 	return c.baseUDPConn.Close()
 }
 
-func (c *listener) GetSelector() ReplySelector {
+func (c *UDPListener) GetSelector() ReplySelector {
 	return c.selector
 }
 
-func (c *listener) SetSelector(s ReplySelector) {
+func (c *UDPListener) SetSelector(s ReplySelector) {
 	c.selector = s
-}
-
-type DefaultReplySelector struct {
-	mtx     sync.RWMutex
-	remotes map[udpAddrKey]remoteEntry
-}
-
-func NewDefaultReplySelector() *DefaultReplySelector {
-	return &DefaultReplySelector{
-		remotes: make(map[udpAddrKey]remoteEntry),
-	}
-}
-
-func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) *Path {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	r, ok := s.remotes[makeKey(dst)]
-	if !ok || len(r.paths) == 0 {
-		return nil
-	}
-	return r.paths[0]
-}
-
-func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
-	if path == nil {
-		return
-	}
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	ksrc := makeKey(src)
-	r := s.remotes[ksrc]
-	r.seen = time.Now()
-	r.paths.insert(path, defaultSelectorMaxReplyPaths)
-	s.remotes[ksrc] = r
-}
-
-func (s *DefaultReplySelector) OnPathDown(PathFingerprint, PathInterface) {
-
-}
-
-func (s *DefaultReplySelector) Close() error {
-	return nil
-}
-
-type udpAddrKey struct {
-	IA   IA
-	IP   [16]byte
-	Port int
-}
-
-func makeKey(a UDPAddr) udpAddrKey {
-	k := udpAddrKey{
-		IA:   a.IA,
-		Port: a.Port,
-	}
-	copy(k.IP[:], a.IP.To16())
-	return k
-}
-
-type remoteEntry struct {
-	paths pathsMRU
-	seen  time.Time
-}
-
-// pathsMRU is a list tracking the most recently used (inserted) path
-type pathsMRU []*Path
-
-func (p *pathsMRU) insert(path *Path, maxEntries int) {
-	paths := *p
-	i := 0
-	for ; i < len(paths); i++ {
-		if paths[i].Fingerprint == path.Fingerprint {
-			break
-		}
-	}
-	if i == len(paths) {
-		if len(paths) < maxEntries {
-			*p = append(paths, nil)
-			paths = *p
-		} else {
-			i = len(paths) - 1 // overwrite least recently used
-		}
-	}
-	paths[i] = path
-
-	// move most-recently-used to front
-	if i != 0 {
-		pi := paths[i]
-		copy(paths[1:i+1], paths[0:i])
-		paths[0] = pi
-	}
 }

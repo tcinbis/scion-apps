@@ -108,17 +108,17 @@ import (
 
 // FIXME: leaking addr.I, addr.A
 // TODO: parse IA
-type IA addr.IA
+//type IA addr.IA
 
-func (ia IA) String() string {
-	return addr.IA(ia).String()
-}
+//func (ia IA) String() string {
+//	return addr.IA(ia).String()
+//}
 
 type IfID uint64
 
 // NOTE: does _NOT_ contain path
 type UDPAddr struct {
-	IA   IA
+	IA   addr.IA
 	IP   net.IP
 	Port int
 }
@@ -151,7 +151,7 @@ func ParseUDPAddr(s string) (UDPAddr, error) {
 		return UDPAddr{}, err
 	}
 	return UDPAddr{
-		IA:   IA(addr.IA),
+		IA:   addr.IA,
 		IP:   addr.Host.IP,
 		Port: addr.Host.Port,
 	}, nil

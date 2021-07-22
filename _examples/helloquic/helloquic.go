@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -54,7 +55,29 @@ func runServer(port int) error {
 		Certificates: appquic.GetDummyTLSCerts(), // XXX
 		NextProtos:   []string{"foo"},
 	}
-	listener, err := pan.ListenQUIC(context.Background(), &net.UDPAddr{Port: port}, nil, tlsCfg, nil)
+	listener, err := pan.ListenQUIC(context.Background(), &net.UDPAddr{Port: port}, nil, true, tlsCfg, nil)
+	closerListener := listener.(pan.CloserListener)
+	conn := closerListener.Conn.(*pan.UDPListener)
+
+	go func() {
+		selector, ok := conn.GetSelector().(*pan.MultiReplySelector)
+		if !ok {
+			fmt.Println("Error casting selector. Exiting go routine")
+			return
+		}
+		selector.AvailablePaths()
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				selector.ActiveRemotes()
+				time.Sleep(5 * time.Second)
+			}
+
+		}
+	}()
+
 	if err != nil {
 		return err
 	}
@@ -62,8 +85,14 @@ func runServer(port int) error {
 	fmt.Println(listener.Addr())
 
 	for {
-		fmt.Println("listen")
 		session, err := listener.Accept(context.Background())
+		session.Context()
+		//policy := pan.PolicyFunc(func(paths []*pan.Path) []*pan.Path {
+		//	return paths[:3]
+		//})
+		//remoteAddr, err := pan.ParseUDPAddr(session.RemoteAddr().String())
+		//testConn, err := conn.MakeConnectionToRemote(context.Background(), remoteAddr, policy, nil)
+		//closerListener.Conn = testConn
 		if err != nil {
 			return err
 		}
@@ -81,17 +110,20 @@ func workSession(session quic.Session) error {
 	for {
 		stream, err := session.AcceptStream(context.Background())
 		if err != nil {
+			fmt.Println("Error accepting new stream")
 			return err
 		}
 		defer stream.Close()
 		data, err := ioutil.ReadAll(stream)
 		if err != nil {
+			fmt.Println("Error reading from stream")
 			return err
 		}
 		fmt.Printf("%s\n", data)
-		_, err = stream.Write([]byte("gotcha: "))
+		_, err = stream.Write([]byte(fmt.Sprintf("%s gotcha: ", session.RemoteAddr().String())))
 		_, err = stream.Write(data)
 		if err != nil {
+			fmt.Println("Error writing data")
 			return err
 		}
 		stream.Close()
@@ -116,7 +148,7 @@ func runClient(address string) error {
 		if err != nil {
 			return err
 		}
-		_, err = stream.Write([]byte("hi dude"))
+		_, err = stream.Write([]byte(fmt.Sprintf("hi dude %d", rand.Intn(5))))
 		if err != nil {
 			return err
 		}

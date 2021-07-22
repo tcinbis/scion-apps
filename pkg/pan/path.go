@@ -16,6 +16,8 @@ package pan
 
 import (
 	"fmt"
+	"github.com/netsec-ethz/scion-apps/pkg/appnet"
+	"github.com/scionproto/scion/go/lib/addr"
 	"net"
 	"strings"
 	"time"
@@ -27,8 +29,8 @@ import (
 
 // TODO: revisit: pointer or value type? what goes where? should ForwardingPath be exported?
 type Path struct {
-	Source         IA
-	Destination    IA
+	Source         addr.IA
+	Destination    addr.IA
 	ForwardingPath ForwardingPath
 	Metadata       *PathMetadata // optional
 	Fingerprint    PathFingerprint
@@ -80,6 +82,40 @@ func (p *Path) Reversed() (*Path, error) {
 		Fingerprint:    fingerprint,
 		Expiry:         p.Expiry,
 	}, nil
+}
+
+func (p *Path) FetchMetadata() {
+	if p.Metadata != nil {
+		return
+	}
+	fmt.Println("Start Query")
+	paths, err := appnet.QueryPaths(p.Destination)
+	fmt.Println("Query complete")
+	if err != nil {
+		fmt.Printf("Error fetching metadata: %v\n", err)
+	}
+	found := false
+	for _, sPath := range paths {
+		snetMetadata := sPath.Metadata()
+		meta := &PathMetadata{
+			Interfaces:   convertPathInterfaceSlice(snetMetadata.Interfaces),
+			MTU:          snetMetadata.MTU,
+			Latency:      snetMetadata.Latency,
+			Bandwidth:    snetMetadata.Bandwidth,
+			Geo:          snetMetadata.Geo,
+			LinkType:     snetMetadata.LinkType,
+			InternalHops: snetMetadata.InternalHops,
+			Notes:        snetMetadata.Notes,
+		}
+		fingerprint := pathSequenceFromInterfaces(meta.Interfaces).Fingerprint()
+		if fingerprint == p.Fingerprint {
+			p.Metadata = meta
+			found = true
+		}
+	}
+	if !found {
+		fmt.Println("Error fetching metadata")
+	}
 }
 
 func (p *Path) String() string {
@@ -144,7 +180,7 @@ func (p ForwardingPath) forwardingPathInfo() (forwardingPathInfo, error) {
 // reversePathFromForwardingPath creates a Path for the return direction from the information
 // on a received packet.
 // The created Path includes fingerprint and expiry information.
-func reversePathFromForwardingPath(src, dst IA, fwPath ForwardingPath) (*Path, error) {
+func reversePathFromForwardingPath(src, dst addr.IA, fwPath ForwardingPath) (*Path, error) {
 	if fwPath.IsEmpty() {
 		return nil, nil
 	}

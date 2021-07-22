@@ -3,6 +3,7 @@ package pan
 import (
 	"context"
 	"fmt"
+	"github.com/scionproto/scion/go/lib/addr"
 	"sync"
 )
 
@@ -58,7 +59,7 @@ func (s *pathRefreshSubscriber) setPolicy(policy Policy, ctx int64) {
 	s.setFiltered(pool.cachedPaths(s.remote.IA), ctx)
 }
 
-func (s *pathRefreshSubscriber) refresh(dst IA, paths []*Path) {
+func (s *pathRefreshSubscriber) refresh(dst addr.IA, paths []*Path) {
 	s.setFiltered(paths, 0)
 }
 
@@ -91,15 +92,15 @@ type Selector interface {
 // switch to the first path (in the order defined by the policy) that is not
 // affected by down notifications.
 type DefaultSelector struct {
-	mutex              sync.Mutex
+	mutex              sync.RWMutex
 	paths              []*Path
 	current            int
 	currentFingerprint PathFingerprint
 }
 
 func (s *DefaultSelector) Path() *Path {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	if len(s.paths) == 0 {
 		return nil
@@ -129,8 +130,8 @@ func (s *DefaultSelector) SetPaths(paths []*Path) {
 }
 
 func (s *DefaultSelector) OnPathDown(pf PathFingerprint, pi PathInterface) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	if IsInterfaceOnPath(s.paths[s.current], pi) || pf == s.currentFingerprint {
 		fmt.Println("down:", s.current, len(s.paths))

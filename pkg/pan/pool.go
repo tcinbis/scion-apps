@@ -16,6 +16,7 @@ package pan
 
 import (
 	"context"
+	"github.com/scionproto/scion/go/lib/addr"
 	"sync"
 	"time"
 )
@@ -27,7 +28,7 @@ var pool pathPool
 
 func init() {
 	pool.refresher = makeRefresher(&pool)
-	pool.entries = make(map[IA]pathPoolDst)
+	pool.entries = make(map[addr.IA]pathPoolDst)
 	// note: start refresher, but won't do anything until paths are added to the pool
 	go pool.refresher.run()
 }
@@ -35,7 +36,7 @@ func init() {
 type pathPool struct {
 	refresher    refresher
 	entriesMutex sync.RWMutex
-	entries      map[IA]pathPoolDst
+	entries      map[addr.IA]pathPoolDst
 }
 
 // pathPoolDst is path pool entry for one destination IA
@@ -50,7 +51,7 @@ type pathPoolSubscriber interface {
 	pathDownNotifyee
 }
 
-func (p *pathPool) subscribe(ctx context.Context, dstIA IA,
+func (p *pathPool) subscribe(ctx context.Context, dstIA addr.IA,
 	s pathPoolSubscriber) ([]*Path, error) {
 
 	paths, err := p.refresher.subscribe(ctx, dstIA, s)
@@ -61,13 +62,13 @@ func (p *pathPool) subscribe(ctx context.Context, dstIA IA,
 	return paths, nil
 }
 
-func (p *pathPool) unsubscribe(dstIA IA, s pathPoolSubscriber) {
+func (p *pathPool) unsubscribe(dstIA addr.IA, s pathPoolSubscriber) {
 	p.refresher.unsubscribe(dstIA, s)
 	stats.unsubscribe(s)
 }
 
 // paths returns paths to dstIA. This _may_ query paths, unless they have recently been queried.
-func (p *pathPool) paths(ctx context.Context, dstIA IA) ([]*Path, error) {
+func (p *pathPool) paths(ctx context.Context, dstIA addr.IA) ([]*Path, error) {
 	p.entriesMutex.RLock()
 	if entry, ok := p.entries[dstIA]; ok {
 		if time.Since(entry.lastQuery) > pathRefreshMinInterval {
@@ -80,7 +81,7 @@ func (p *pathPool) paths(ctx context.Context, dstIA IA) ([]*Path, error) {
 }
 
 // queryPaths returns paths to dstIA. Unconditionally requests paths from sciond.
-func (p *pathPool) queryPaths(ctx context.Context, dstIA IA) ([]*Path, error) {
+func (p *pathPool) queryPaths(ctx context.Context, dstIA addr.IA) ([]*Path, error) {
 	paths, err := host().queryPaths(ctx, dstIA)
 	if err != nil {
 		return nil, err
@@ -94,13 +95,13 @@ func (p *pathPool) queryPaths(ctx context.Context, dstIA IA) ([]*Path, error) {
 }
 
 // cachedPaths returns paths to dstIA. Always returns the cached paths, never queries paths.
-func (p *pathPool) cachedPaths(dst IA) []*Path {
+func (p *pathPool) cachedPaths(dst addr.IA) []*Path {
 	p.entriesMutex.RLock()
 	defer p.entriesMutex.RUnlock()
 	return append([]*Path{}, p.entries[dst].paths...)
 }
 
-func (p *pathPool) entry(dstIA IA) (pathPoolDst, bool) {
+func (p *pathPool) entry(dstIA addr.IA) (pathPoolDst, bool) {
 	p.entriesMutex.RLock()
 	defer p.entriesMutex.RUnlock()
 	e, ok := p.entries[dstIA]

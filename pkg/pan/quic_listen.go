@@ -22,25 +22,25 @@ import (
 	"github.com/lucas-clemente/quic-go"
 )
 
-// closerListener is a wrapper around quic.Listener that always closes the
+// CloserListener is a wrapper around quic.Listener that always closes the
 // underlying conn when closing the session.
-type closerListener struct {
+type CloserListener struct {
 	quic.Listener
-	conn net.PacketConn
+	Conn net.PacketConn
 }
 
-func (l closerListener) Close() error {
+func (l CloserListener) Close() error {
 	err := l.Listener.Close()
-	l.conn.Close()
+	l.Conn.Close()
 	return err
 }
 
 // ListenQUIC listens for QUIC connections on a SCION/UDP port.
 // See note on wildcard addresses in the appnet package documentation.
-func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
+func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector, multi bool,
 	tlsConf *tls.Config, quicConfig *quic.Config) (quic.Listener, error) {
 
-	conn, err := ListenUDP(ctx, local, selector)
+	conn, err := ListenUDP(ctx, local, selector, multi)
 	if err != nil {
 		return nil, err
 	}
@@ -49,8 +49,8 @@ func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
 		conn.Close()
 		return nil, err
 	}
-	return closerListener{
+	return CloserListener{
 		Listener: listener,
-		conn:     conn,
+		Conn:     conn,
 	}, nil
 }

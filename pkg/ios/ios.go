@@ -155,7 +155,7 @@ type Connection struct {
 }
 
 type Listener struct {
-	underlying pan.UDPListener
+	underlying pan.Listener
 }
 
 func DialUDP(destination *UDPAddress, policyFilter PathPolicyFilter) (*Connection, error) {
@@ -169,7 +169,7 @@ func DialUDP(destination *UDPAddress, policyFilter PathPolicyFilter) (*Connectio
 }
 
 func ListenUDP(port int) (*Listener, error) {
-	l, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: port}, nil)
+	l, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: port}, nil, false)
 	if err != nil {
 		return nil, err
 	}

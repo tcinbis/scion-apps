@@ -16,6 +16,7 @@ package pan
 
 import (
 	"fmt"
+	"github.com/scionproto/scion/go/lib/addr"
 	"reflect"
 	"strings"
 	"time"
@@ -24,7 +25,7 @@ import (
 )
 
 type PathInterface struct {
-	IA   IA
+	IA   addr.IA
 	IfID IfID
 }
 

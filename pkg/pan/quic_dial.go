@@ -17,6 +17,7 @@ package pan
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 
 	"github.com/lucas-clemente/quic-go"
@@ -72,6 +73,7 @@ func DialQUIC(ctx context.Context,
 		return nil, err
 	}
 	pconn := connectedPacketConn{conn}
+	fmt.Println("QUIC Dialing")
 	session, err := quic.DialContext(ctx, pconn, remote, host, tlsConf, quicConf)
 	if err != nil {
 		return nil, err

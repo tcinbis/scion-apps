@@ -165,7 +165,7 @@ func (c *baseUDPConn) readMsg(b []byte) (int, UDPAddr, ForwardingPath, error) {
 			continue // ignore non-UDP packet
 		}
 		remote := UDPAddr{
-			IA:   IA(pkt.Source.IA),
+			IA:   pkt.Source.IA,
 			IP:   append(net.IP{}, pkt.Source.Host.IP()...),
 			Port: int(udp.SrcPort),
 		}
@@ -190,13 +190,13 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 	case slayers.SCMPTypeExternalInterfaceDown:
 		msg := pkt.Payload.(snet.SCMPExternalInterfaceDown)
 		pi := PathInterface{
-			IA:   IA(msg.IA),
+			IA:   msg.IA,
 			IfID: IfID(msg.Interface),
 		}
 		// fmt.Printf("Interface down %v\n", pi)
 		p, err := reversePathFromForwardingPath(
-			IA(pkt.Destination.IA), // the local IA
-			IA{},                   // original destination unknown, would require parsing the SCMP quote
+			pkt.Destination.IA, // the local IA
+			addr.IA{},          // original destination unknown, would require parsing the SCMP quote
 			ForwardingPath{spath: pkt.Path},
 		)
 		if err != nil { // bad packet, drop silently
@@ -208,13 +208,13 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 	case slayers.SCMPTypeInternalConnectivityDown:
 		msg := pkt.Payload.(snet.SCMPInternalConnectivityDown)
 		pi := PathInterface{
-			IA:   IA(msg.IA),
+			IA:   msg.IA,
 			IfID: IfID(msg.Egress),
 		}
 		fmt.Printf("Internal connectivity down %v\n", pi)
 		p, err := reversePathFromForwardingPath(
-			IA(pkt.Destination.IA), // the local IA
-			IA{},                   // unknown
+			pkt.Destination.IA, // the local IA
+			addr.IA{},          // unknown
 			ForwardingPath{spath: pkt.Path},
 		)
 		if err != nil {
@@ -226,7 +226,7 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 		fmt.Printf("Other scmp error\n")
 		return SCMPError{
 			typeCode: slayers.CreateSCMPTypeCode(scmp.Type(), scmp.Code()),
-			ErrorIA:  IA(pkt.Source.IA),
+			ErrorIA:  pkt.Source.IA,
 			ErrorIP:  append(net.IP{}, pkt.Source.Host.IP()...),
 		}
 	}
@@ -235,7 +235,7 @@ func (h scmpHandler) Handle(pkt *snet.Packet) error {
 type SCMPError struct {
 	typeCode slayers.SCMPTypeCode
 	// ErrorIA is the source IA of the SCMP error message
-	ErrorIA IA
+	ErrorIA addr.IA
 	// ErrorIP is the source IP of the SCMP error message
 	ErrorIP net.IP
 	// TODO: include quote information (pkt destinition, path, ...)
