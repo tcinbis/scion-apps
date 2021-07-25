@@ -1,6 +1,8 @@
 package pan
 
-import "net"
+import (
+	"net"
+)
 
 // Conn represents a connection between exactly two hosts.
 type Conn interface {
@@ -16,6 +18,8 @@ type Conn interface {
 	// ReadPath reads a message and returns the (return-)path via which the
 	// message was received.
 	ReadPath(b []byte) (int, *Path, error)
+
+	GetLastPath() *Path
 }
 
 type connection struct {
@@ -26,6 +30,7 @@ type connection struct {
 	remote     UDPAddr
 	subscriber *pathRefreshSubscriber
 	Selector   Selector
+	lastPath   *Path
 }
 
 func (c *connection) SetPolicy(policy Policy, context int64) {
@@ -65,13 +70,34 @@ func (c *connection) WritePath(path *Path, b []byte) (int, error) {
 
 func (c *connection) Read(b []byte) (int, error) {
 	for {
-		n, remote, _, err := c.baseUDPConn.readMsg(b)
+		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 		if err != nil {
 			return n, err
 		}
 		if !remote.Equal(c.remote) {
 			continue // connected! Ignore spurious packets from wrong source
 		}
+		go func() {
+			if fwPath.IsEmpty() {
+				return
+			}
+			fpi, err := fwPath.forwardingPathInfo()
+			if err != nil {
+				return
+			}
+			ps := pathSequence{InterfaceIDs: fpi.interfaceIDs}
+			if c.lastPath != nil && c.lastPath.Fingerprint == ps.Fingerprint() {
+				return
+			}
+			c.lastPath = &Path{
+				Source:         remote.IA,
+				Destination:    c.local.IA,
+				ForwardingPath: fwPath,
+				Metadata:       nil,
+				Fingerprint:    ps.Fingerprint(),
+			}
+		}()
+
 		return n, err
 	}
 }
@@ -91,6 +117,10 @@ func (c *connection) ReadPath(b []byte) (int, *Path, error) {
 		}
 		return n, path, nil
 	}
+}
+
+func (c *connection) GetLastPath() *Path {
+	return c.lastPath
 }
 
 // TODO: A conn stemming from a listener should not close the listener socket
