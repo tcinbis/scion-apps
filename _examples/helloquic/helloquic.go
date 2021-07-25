@@ -71,7 +71,7 @@ func runServer(port int) error {
 		for {
 			select {
 			case <-t.C:
-				selector.ActiveRemotes()
+				//selector.ActiveRemotes()
 				time.Sleep(5 * time.Second)
 			}
 
@@ -119,7 +119,7 @@ func workSession(session quic.Session) error {
 			fmt.Println("Error reading from stream")
 			return err
 		}
-		fmt.Printf("%s\n", data)
+		//fmt.Printf("%s\n", data)
 		_, err = stream.Write([]byte(fmt.Sprintf("%s gotcha: ", session.RemoteAddr().String())))
 		_, err = stream.Write(data)
 		if err != nil {
@@ -154,6 +154,18 @@ func runClient(address string) error {
 		}
 		stream.Close()
 		reply, err := ioutil.ReadAll(stream)
+		p := session.Conn.GetLastPath()
+		if p != nil {
+			rp, err := p.Reversed()
+			if err != nil {
+				fmt.Printf("Error reversing path: %v \n", err)
+			}
+			if rp.Metadata == nil {
+				rp.FetchMetadata()
+				p.Metadata = rp.Metadata.Reversed()
+			}
+			fmt.Printf("Received last packet via: \n %s\n", p.String())
+		}
 		fmt.Printf("%s\n", reply)
 		time.Sleep(time.Second)
 	}
