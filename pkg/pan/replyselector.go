@@ -3,6 +3,7 @@ package pan
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/bclicn/color"
 	"github.com/scionproto/scion/go/lib/addr"
@@ -24,19 +25,21 @@ type ReplySelector interface {
 	OnPacketReceived(src, dst UDPAddr, path *Path)
 	OnPathDown(PathFingerprint, PathInterface)
 	SetFixedPath(dst UDPAddr, path *Path)
-	AvailablePaths()
+	AvailablePaths() string
+	RemoteClients() []UdpAddrKey
+	RemotePaths() map[UdpAddrKey][]*Path
 	Close() error
 }
 
-// udpAddrKey converts a destination's address in a key for maps
-type udpAddrKey struct {
+// UdpAddrKey converts a destination's address in a key for maps
+type UdpAddrKey struct {
 	IA   addr.IA
 	IP   [16]byte
 	Port int
 }
 
-// remoteEntry stores paths to destination. Used in ReplySelector
-type remoteEntry struct {
+// RemoteEntry stores paths to destination. Used in ReplySelector
+type RemoteEntry struct {
 	paths       pathsMRU
 	seen        time.Time
 	expireTimer *time.Timer
@@ -46,50 +49,38 @@ type remoteEntry struct {
 // pathsMRU is a list tracking the most recently used (inserted) path
 type pathsMRU []*Path
 
-type DefaultReplySelector struct {
-	mtx       sync.RWMutex
-	remotes   map[udpAddrKey]remoteEntry
-	fixedPath *Path
-}
-
-// MultiReplySelector is capable of handling multiple destinations while subscribing to Pool updates
+// MultiReplySelector is capable of handling multiple destinations while subscribing to Pool updates.
+// For each remote fixed paths can be set. Otherwise paths are received from pool updates or received packets.
+// By default the MultiReplySelector will reply via the path the packet was received on.
 type MultiReplySelector struct {
-	DefaultReplySelector
+	mtx        sync.RWMutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	ticker     *time.Ticker
+	useUpdates bool
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	ticker *time.Ticker
+	Remotes   map[UdpAddrKey]RemoteEntry
+	IaRemotes map[addr.IA][]UdpAddrKey `json:"ia_remotes"`
+	IaPaths   map[addr.IA][]*Path      `json:"ia_paths"`
 
-	iaRemotes map[addr.IA][]udpAddrKey
-	iaPaths   map[addr.IA][]*Path
-
-	fixedPath map[udpAddrKey]*Path
+	FixedPath map[UdpAddrKey]*Path `json:"fixed_path"`
 }
 
 var (
-	_ ReplySelector = &DefaultReplySelector{}
 	_ ReplySelector = &MultiReplySelector{}
 )
 
-func NewDefaultReplySelector() *DefaultReplySelector {
-	return &DefaultReplySelector{
-		remotes: make(map[udpAddrKey]remoteEntry),
-	}
-}
-
 func NewMultiReplySelector(ctx context.Context) *MultiReplySelector {
-
 	rCtx, rCancel := context.WithCancel(ctx)
 	selector := &MultiReplySelector{
-		DefaultReplySelector: DefaultReplySelector{
-			remotes: make(map[udpAddrKey]remoteEntry),
-		},
-		ctx:       rCtx,
-		cancel:    rCancel,
-		ticker:    time.NewTicker(10 * time.Second),
-		iaRemotes: make(map[addr.IA][]udpAddrKey),
-		iaPaths:   make(map[addr.IA][]*Path),
-		fixedPath: make(map[udpAddrKey]*Path),
+		ctx:        rCtx,
+		cancel:     rCancel,
+		ticker:     time.NewTicker(10 * time.Second),
+		useUpdates: true,
+		Remotes:    make(map[UdpAddrKey]RemoteEntry),
+		IaRemotes:  make(map[addr.IA][]UdpAddrKey),
+		IaPaths:    make(map[addr.IA][]*Path),
+		FixedPath:  make(map[UdpAddrKey]*Path),
 	}
 
 	go selector.run()
@@ -97,92 +88,66 @@ func NewMultiReplySelector(ctx context.Context) *MultiReplySelector {
 	return selector
 }
 
-func (s *DefaultReplySelector) ReplyPath(src, dst UDPAddr) *Path {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	if s.fixedPath != nil {
-		return s.fixedPath
+func (s *MultiReplySelector) RemoteClients() []UdpAddrKey {
+	clients := make([]UdpAddrKey, len(s.Remotes))
+	for addrKey, _ := range s.Remotes {
+		clients = append(clients, addrKey)
 	}
 
-	r, ok := s.remotes[makeKey(dst)]
-	if !ok || len(r.paths) == 0 {
-		return nil
-	}
-	return r.paths[0]
+	return clients
 }
 
-func (s *DefaultReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
-	if path == nil {
-		return
+func (s *MultiReplySelector) RemotePaths() map[UdpAddrKey][]*Path {
+	clients := make(map[UdpAddrKey][]*Path, len(s.Remotes))
+	for addrKey, rEntry := range s.Remotes {
+		clients[addrKey] = rEntry.paths
 	}
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	ksrc := makeKey(src)
-	r := s.remotes[ksrc]
-	r.seen = time.Now()
-	r.paths.insert(path, defaultSelectorMaxReplyPaths)
-	s.remotes[ksrc] = r
+	return clients
 }
 
-func (s *DefaultReplySelector) OnPathDown(PathFingerprint, PathInterface) {
+func (s *MultiReplySelector) OnPathDown(PathFingerprint, PathInterface) {
 	fmt.Println("PathDown event missed/ignored in DefaultReplySelector")
-}
-
-func (s *DefaultReplySelector) Close() error {
-	return nil
-}
-
-func (s *DefaultReplySelector) AvailablePaths() {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	for key, val := range s.remotes {
-		fmt.Printf("%s, %v, %s \n", key.String(), val.paths.string(), val.seen.String())
-	}
-}
-
-func (s *DefaultReplySelector) SetFixedPath(dst UDPAddr, path *Path) {
-	s.mtx.RLock()
-	currFixed := s.fixedPath
-	s.mtx.RUnlock()
-
-	if currFixed != path {
-		s.mtx.Lock()
-		defer s.mtx.Unlock()
-		s.fixedPath = path
-	}
 }
 
 func (s *MultiReplySelector) SetFixedPath(dst UDPAddr, path *Path) {
 	ukey := makeKey(dst)
 	s.mtx.RLock()
-	currFixed := s.fixedPath[ukey]
+	currFixed := s.FixedPath[ukey]
 	s.mtx.RUnlock()
 
 	if currFixed != path {
 		s.mtx.Lock()
 		defer s.mtx.Unlock()
-		s.fixedPath[ukey] = path
+		s.FixedPath[ukey] = path
 	}
 }
 
 func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	ukey := makeKey(dst)
 	s.mtx.RLock()
-	p, ok := s.fixedPath[ukey]
+	p, ok := s.FixedPath[ukey]
 	s.mtx.RUnlock()
 	if !ok {
-		if p = s.DefaultReplySelector.ReplyPath(src, dst); p == nil {
-			// only use the iaPaths if we have no fixed path and no reply path
+		// We found no fixed path so check for a reply path we got from a received packet
+		s.mtx.RLock()
+		var rPath *Path
+		r, ok := s.Remotes[ukey]
+		if ok && len(r.paths) > 0 {
+			rPath = r.paths[0]
+		}
+		s.mtx.RUnlock()
+
+		if rPath == nil {
+			// only use the iaPaths if we have no reply path from a received packet
 			s.mtx.RLock()
-			paths, ok := s.iaPaths[dst.IA]
+			paths, ok := s.IaPaths[dst.IA]
 			s.mtx.RUnlock()
 			if ok {
 				p = paths[0]
 			}
+		} else {
+			p = rPath
 		}
 	}
 	return p
@@ -196,7 +161,7 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 
 	ksrc := makeKey(src)
 	s.mtx.Lock()
-	r, ok := s.remotes[ksrc]
+	r, ok := s.Remotes[ksrc]
 	s.mtx.Unlock()
 	r.seen = time.Now()
 	if !ok {
@@ -211,7 +176,7 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 	r.expired = func() {
 		for {
 			s.mtx.Lock()
-			remote, ok := s.remotes[ksrc]
+			remote, ok := s.Remotes[ksrc]
 			s.mtx.Unlock()
 			if !ok {
 				// remote was already removed!
@@ -221,10 +186,10 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 			case <-remote.expireTimer.C:
 				s.mtx.Lock()
 				defer s.mtx.Unlock()
-				delete(s.remotes, ksrc)
+				delete(s.Remotes, ksrc)
 
 				// remove this remote from the s.iaRemotes list
-				if remotes, ok := s.iaRemotes[ksrc.IA]; ok {
+				if remotes, ok := s.IaRemotes[ksrc.IA]; ok {
 					for i, rem := range remotes {
 						if rem == ksrc {
 							lr := len(remotes)
@@ -234,15 +199,15 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 								remotes = remotes[:lr-1]
 							} else {
 								// there is only one item so set empty slice
-								remotes = []udpAddrKey{}
+								remotes = []UdpAddrKey{}
 							}
 
-							s.iaRemotes[ksrc.IA] = remotes
+							s.IaRemotes[ksrc.IA] = remotes
 						}
 					}
 				}
 
-				fmt.Printf("Deleting %s from remotes after expirey\n", ksrc.String())
+				fmt.Printf("Deleting %s from remotes after expiry\n", ksrc.String())
 				return
 			default:
 				time.Sleep(5 * time.Second)
@@ -254,7 +219,7 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 		go r.expired()
 	}
 	r.paths.insert(path, defaultSelectorMaxReplyPaths)
-	s.remotes[ksrc] = r
+	s.Remotes[ksrc] = r
 }
 
 // updateIA keeps track of the open remotes for an IA contained in the UDPAddr
@@ -266,18 +231,18 @@ func (s *MultiReplySelector) updateIA(src, dst UDPAddr, path *Path) {
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	if _, ok := s.iaRemotes[kSrc.IA]; !ok {
+	if _, ok := s.IaRemotes[kSrc.IA]; !ok && s.useUpdates {
 		// we got a new IA -> subscribe for updates
 		paths, err := pool.subscribe(s.ctx, kSrc.IA, s)
 		if err != nil {
 			fmt.Printf("Error subsribing to pool updates for %s\n", kSrc.IA.String())
 			os.Exit(-1)
 		}
-		s.iaPaths[kSrc.IA] = paths
+		s.IaPaths[kSrc.IA] = paths
 	}
-	if _, ok := s.remotes[kSrc]; !ok {
+	if _, ok := s.Remotes[kSrc]; !ok {
 		// we got a new remote we have to add to our IA to remotes mapping
-		s.iaRemotes[kSrc.IA] = append(s.iaRemotes[kSrc.IA], kSrc)
+		s.IaRemotes[kSrc.IA] = append(s.IaRemotes[kSrc.IA], kSrc)
 	}
 }
 
@@ -289,7 +254,9 @@ func (s *MultiReplySelector) run() {
 			fmt.Println("MultiReplySelector stopping.")
 			break
 		case <-s.ticker.C:
-			// TODO: perform updates and check for new subscribers
+			if len(s.Remotes) < 1 {
+				continue
+			}
 			fmt.Print("Do you want to perform path selection for remotes? [y/N]: ")
 			scanner := bufio.NewScanner(os.Stdin)
 
@@ -314,35 +281,35 @@ func (s *MultiReplySelector) run() {
 	}
 }
 
-func (s *MultiReplySelector) chooseRemoteInteractive() (udpAddrKey, error) {
+func (s *MultiReplySelector) chooseRemoteInteractive() (UdpAddrKey, error) {
 	fmt.Printf("Available remotes: \n")
-	indexToRemote := make(map[int]udpAddrKey)
+	indexToRemote := make(map[int]UdpAddrKey)
 	i := 0
-	for remote, _ := range s.remotes {
+	for remote, _ := range s.Remotes {
 		fmt.Printf("[%2d] %s\n", i, remote.String())
 		indexToRemote[i] = remote
 		i++
 	}
 
-	var selectedRemote udpAddrKey
+	var selectedRemote UdpAddrKey
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Printf("Choose remote: ")
 	scanner.Scan()
 	remoteIndexStr := scanner.Text()
 	remoteIndex, err := strconv.Atoi(remoteIndexStr)
-	if err == nil && 0 <= remoteIndex && remoteIndex < len(s.remotes) {
+	if err == nil && 0 <= remoteIndex && remoteIndex < len(s.Remotes) {
 		selectedRemote = indexToRemote[remoteIndex]
 	} else {
-		fmt.Printf("ERROR: Invalid remote index %v, valid indices range: [0, %v]\n", remoteIndex, len(s.remotes)-1)
+		fmt.Printf("ERROR: Invalid remote index %v, valid indices range: [0, %v]\n", remoteIndex, len(s.Remotes)-1)
 	}
 
 	re := regexp.MustCompile(`\d{1,4}-([0-9a-f]{1,4}:){2}[0-9a-f]{1,4}`)
-	fmt.Printf("Using path:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote), color.Cyan))
+	fmt.Printf("Using path:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote.String()), color.Cyan))
 	return selectedRemote, nil
 }
 
-func (s *MultiReplySelector) choosePathInteractive(remote udpAddrKey) (path *Path, err error) {
-	paths := s.iaPaths[remote.IA]
+func (s *MultiReplySelector) choosePathInteractive(remote UdpAddrKey) (path *Path, err error) {
+	paths := s.IaPaths[remote.IA]
 
 	fmt.Printf("Available paths to %s\n", remote.String())
 	for i, path := range paths {
@@ -375,7 +342,7 @@ func (s *MultiReplySelector) refresh(dst addr.IA, paths []*Path) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	fmt.Printf("Received update for %s\n", dst.String())
-	s.iaPaths[dst] = paths
+	s.IaPaths[dst] = paths
 }
 
 func (s *MultiReplySelector) OnPacketReceived(src, dst UDPAddr, path *Path) {
@@ -388,11 +355,11 @@ func (s *MultiReplySelector) ActiveRemotes() {
 	defer s.mtx.RUnlock()
 
 	var sb strings.Builder
-	if len(s.iaRemotes) == 0 {
+	if len(s.IaRemotes) == 0 {
 		sb.WriteString("No active connections.")
 	}
 
-	for _, val := range s.iaRemotes {
+	for _, val := range s.IaRemotes {
 		for _, rem := range val {
 			path := s.ReplyPath(UDPAddr{}, rem.ToUDPAddr())
 			if path.Metadata == nil {
@@ -405,26 +372,26 @@ func (s *MultiReplySelector) ActiveRemotes() {
 	fmt.Println(sb.String())
 }
 
-func (s *MultiReplySelector) AvailablePaths() {
+func (s *MultiReplySelector) AvailablePaths() string {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
 	var sb strings.Builder
-	for key, val := range s.iaPaths {
+	for key, val := range s.IaPaths {
 		sb.WriteString(fmt.Sprintf("%s ", key.String()))
 		for _, path := range val {
 			path.FetchMetadata()
 			sb.WriteString(fmt.Sprintf("%s \n", path.String()))
 		}
 	}
-	fmt.Println(sb.String())
+	return sb.String()
 }
 
-func (u *udpAddrKey) String() string {
+func (u *UdpAddrKey) String() string {
 	return fmt.Sprintf("%s,[%s:%d]", u.IA.String(), net.IP(u.IP[:]).String(), u.Port)
 }
 
-func (u *udpAddrKey) ToUDPAddr() UDPAddr {
+func (u *UdpAddrKey) ToUDPAddr() UDPAddr {
 	return UDPAddr{
 		IA:   u.IA,
 		IP:   u.IP[:],
@@ -432,13 +399,36 @@ func (u *udpAddrKey) ToUDPAddr() UDPAddr {
 	}
 }
 
-func makeKey(a UDPAddr) udpAddrKey {
-	k := udpAddrKey{
+func (u UdpAddrKey) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.String())
+}
+
+func (u UdpAddrKey) MarshalText() ([]byte, error) {
+	return []byte(u.String()), nil
+}
+
+func makeKey(a UDPAddr) UdpAddrKey {
+	k := UdpAddrKey{
 		IA:   a.IA,
 		Port: a.Port,
 	}
 	copy(k.IP[:], a.IP.To16())
 	return k
+}
+
+func (u RemoteEntry) MarshalJSON() ([]byte, error) {
+	s := struct {
+		Paths int
+		Seen  int
+	}{
+		Paths: len(u.paths),
+		Seen:  int(u.seen.Unix()),
+	}
+	return json.Marshal(s)
+}
+
+func (u RemoteEntry) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("paths:%d,seen:%d", len(u.paths), int(u.seen.Unix()))), nil
 }
 
 func (p *pathsMRU) insert(path *Path, maxEntries int) {

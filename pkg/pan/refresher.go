@@ -42,7 +42,7 @@ func makeRefresher(pool *pathPool) refresher {
 
 // subscribe for paths to dst.
 func (r *refresher) subscribe(ctx context.Context, dst addr.IA, s refreshee) ([]*Path, error) {
-	// BUG: oops, this will not inform subscribers of updated paths. Need to explicily check here
+	// BUG: oops, this will not inform subscribers of updated paths. Need to explicitly check here
 	paths, err := r.pool.paths(ctx, dst)
 	if err != nil {
 		return nil, err

@@ -52,7 +52,7 @@ type UDPListener struct {
 }
 
 func ListenUDP(ctx context.Context, local *net.UDPAddr,
-	selector ReplySelector, multi bool) (Listener, error) {
+	selector ReplySelector) (Listener, error) {
 
 	local, err := defaultLocalAddr(local)
 	if err != nil {
@@ -60,12 +60,8 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 	}
 
 	if selector == nil {
-		if multi {
-			fmt.Println("Using MultiReplySelector")
-			selector = NewMultiReplySelector(context.Background())
-		} else {
-			selector = NewDefaultReplySelector()
-		}
+		fmt.Println("Using MultiReplySelector")
+		selector = NewMultiReplySelector(context.Background())
 	}
 	stats.subscribe(selector)
 	raw, slocal, err := openBaseUDPConn(ctx, local)
@@ -141,7 +137,9 @@ func (c *UDPListener) WriteTo(b []byte, dst net.Addr) (int, error) {
 	if c.local.IA != sdst.IA {
 		path = c.selector.ReplyPath(c.local, sdst)
 		if path == nil {
-			return 0, errNoPathTo(sdst.IA)
+			err := errNoPathTo(sdst.IA)
+			fmt.Printf("No path to %v \n", err)
+			return 0, err
 		}
 	}
 	return c.WriteToPath(b, sdst, path)

@@ -23,12 +23,15 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet/appquic"
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 )
+
+var once sync.Once
 
 func main() {
 	var err error
@@ -55,28 +58,35 @@ func runServer(port int) error {
 		Certificates: appquic.GetDummyTLSCerts(), // XXX
 		NextProtos:   []string{"foo"},
 	}
-	listener, err := pan.ListenQUIC(context.Background(), &net.UDPAddr{Port: port}, nil, true, tlsCfg, nil)
-	closerListener := listener.(pan.CloserListener)
-	conn := closerListener.Conn.(*pan.UDPListener)
+	listener, err := pan.ListenQUIC(context.Background(), &net.UDPAddr{Port: port}, nil, tlsCfg, nil)
+	//closerListener := listener.(pan.CloserListener)
+	//conn := closerListener.Conn.(*pan.UDPListener)
 
-	go func() {
-		selector, ok := conn.GetSelector().(*pan.MultiReplySelector)
-		if !ok {
-			fmt.Println("Error casting selector. Exiting go routine")
-			return
-		}
-		selector.AvailablePaths()
-		t := time.NewTicker(5 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-				//selector.ActiveRemotes()
-				time.Sleep(5 * time.Second)
-			}
-
-		}
-	}()
+	//go func() {
+	//	selector, ok := conn.GetSelector().(*pan.MultiReplySelector)
+	//	if !ok {
+	//		fmt.Println("Error casting selector. Exiting go routine")
+	//		return
+	//	}
+	//	//selector.AvailablePaths()
+	//	t := time.NewTicker(15 * time.Second)
+	//	defer t.Stop()
+	//	for {
+	//		select {
+	//		case <-t.C:
+	//			//selector.ActiveRemotes()
+	//			once.Do(func() {
+	//				res, err := json.Marshal(selector)
+	//				if err != nil{
+	//					fmt.Printf("Error marshaling selector: %v", err)
+	//				}
+	//				fmt.Println(string(res))
+	//			})
+	//			time.Sleep(10 * time.Second)
+	//		}
+	//
+	//	}
+	//}()
 
 	if err != nil {
 		return err
@@ -148,7 +158,7 @@ func runClient(address string) error {
 		if err != nil {
 			return err
 		}
-		_, err = stream.Write([]byte(fmt.Sprintf("hi dude %d", rand.Intn(5))))
+		_, err = stream.Write([]byte(fmt.Sprintf("hi dude %d", rand.Intn(1000))))
 		if err != nil {
 			return err
 		}
@@ -167,7 +177,7 @@ func runClient(address string) error {
 			fmt.Printf("Received last packet via: \n %s\n", p.String())
 		}
 		fmt.Printf("%s\n", reply)
-		time.Sleep(time.Second)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
