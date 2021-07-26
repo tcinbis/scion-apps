@@ -5,3 +5,4 @@
 [submodule "quic-go"]
 	path = quic-go
 	url = git@github.com:tcinbis/quic-go.git
+	branch = tcinbis/flowtele-v0.21.0
