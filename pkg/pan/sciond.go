@@ -17,6 +17,8 @@ package pan
 import (
 	"context"
 	"fmt"
+	"github.com/scionproto/scion/go/pkg/pathprobe"
+	"math/rand"
 	"net"
 	"os"
 	"sync"
@@ -175,8 +177,33 @@ func (h *scionHostContext) queryPaths(ctx context.Context, dst addr.IA) ([]*Path
 	if len(snetPaths) == 0 {
 		fmt.Println("Got empty paths from sciond")
 	}
-	paths := make([]*Path, len(snetPaths))
-	for i, p := range snetPaths {
+
+	fmt.Printf("Received %d paths.\n", len(snetPaths))
+
+	// probe status of paths
+	// WARNING: This can higher level protocols cause to timeout if it is executed inside a Read or Write as it takes at most x seconds to probe path
+	subCtx, cancelF := context.WithTimeout(ctx, 1*time.Second)
+	defer cancelF()
+	statuses, err := pathprobe.Prober{
+		DstIA:   dst,
+		LocalIA: h.ia,
+		LocalIP: h.hostInLocalAS,
+		ID:      uint16(rand.Uint32()),
+	}.GetStatuses(subCtx, snetPaths)
+
+	if err != nil {
+		return nil, fmt.Errorf("Error probing paths: %v.", err)
+	}
+
+	paths := make([]*Path, 0, len(snetPaths))
+	for _, p := range snetPaths {
+
+		// TODO: Or should we be cautious and better skip the paths we have no status for?
+		if status, ok := statuses[pathprobe.PathKey(p)]; ok && status.Status != pathprobe.StatusAlive {
+			// if we have a status and it is NOT alive then skip the path
+			continue
+		}
+
 		snetMetadata := p.Metadata()
 		metadata := &PathMetadata{
 			Interfaces:   convertPathInterfaceSlice(snetMetadata.Interfaces),
@@ -188,7 +215,7 @@ func (h *scionHostContext) queryPaths(ctx context.Context, dst addr.IA) ([]*Path
 			InternalHops: snetMetadata.InternalHops,
 			Notes:        snetMetadata.Notes,
 		}
-		paths[i] = &Path{
+		paths = append(paths, &Path{
 			Source:      h.ia,
 			Destination: dst,
 			Metadata:    metadata,
@@ -198,8 +225,9 @@ func (h *scionHostContext) queryPaths(ctx context.Context, dst addr.IA) ([]*Path
 				spath:    p.Path(),
 				underlay: p.UnderlayNextHop(),
 			},
-		}
+		})
 	}
+	fmt.Printf("Got %d paths which are alive.\n", len(paths))
 	return paths, nil
 }
 
