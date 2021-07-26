@@ -15,23 +15,23 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/lucas-clemente/quic-go/flowtele"
 	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet/appquic"
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 )
-
-var once sync.Once
 
 func main() {
 	var err error
@@ -58,35 +58,46 @@ func runServer(port int) error {
 		Certificates: appquic.GetDummyTLSCerts(), // XXX
 		NextProtos:   []string{"foo"},
 	}
-	listener, err := pan.ListenQUIC(context.Background(), &net.UDPAddr{Port: port}, nil, tlsCfg, nil)
-	//closerListener := listener.(pan.CloserListener)
-	//conn := closerListener.Conn.(*pan.UDPListener)
 
-	//go func() {
-	//	selector, ok := conn.GetSelector().(*pan.MultiReplySelector)
-	//	if !ok {
-	//		fmt.Println("Error casting selector. Exiting go routine")
-	//		return
-	//	}
-	//	//selector.AvailablePaths()
-	//	t := time.NewTicker(15 * time.Second)
-	//	defer t.Stop()
-	//	for {
-	//		select {
-	//		case <-t.C:
-	//			//selector.ActiveRemotes()
-	//			once.Do(func() {
-	//				res, err := json.Marshal(selector)
-	//				if err != nil{
-	//					fmt.Printf("Error marshaling selector: %v", err)
-	//				}
-	//				fmt.Println(string(res))
-	//			})
-	//			time.Sleep(10 * time.Second)
-	//		}
-	//
-	//	}
-	//}()
+	quicCfg := quic.Config{
+		FlowTeleSignal: flowtele.CreateFlowteleSignalInterface(nil, nil, nil, nil),
+	}
+
+	listener, err := pan.ListenQUIC(context.Background(), &net.UDPAddr{Port: port}, nil, tlsCfg, &quicCfg)
+	closerListener := listener.(pan.CloserListener)
+	conn := closerListener.Conn.(*pan.UDPListener)
+
+	go func() {
+		selector, ok := conn.GetSelector().(*pan.MultiReplySelector)
+		if !ok {
+			fmt.Println("Error casting selector. Exiting go routine")
+			return
+		}
+		t := time.NewTicker(10 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				//selector.ActiveRemotes()
+
+				res, err := json.MarshalIndent(selector, "", "\t")
+				check(err)
+				f, err := os.Create("output.json")
+				check(err)
+				defer f.Close()
+
+				check(f.Truncate(0))
+				_, err = f.Seek(0, 0)
+				check(err)
+
+				w := bufio.NewWriter(f)
+				_, err = w.Write(res)
+				check(err)
+				w.Flush()
+			}
+
+		}
+	}()
 
 	if err != nil {
 		return err

@@ -59,9 +59,9 @@ type MultiReplySelector struct {
 	ticker     *time.Ticker
 	useUpdates bool
 
-	Remotes   map[UdpAddrKey]RemoteEntry
-	IaRemotes map[addr.IA][]UdpAddrKey `json:"ia_remotes"`
-	IaPaths   map[addr.IA][]*Path      `json:"ia_paths"`
+	Remotes   map[UdpAddrKey]RemoteEntry `json:"remotes"`
+	IaRemotes map[addr.IA][]UdpAddrKey   `json:"ia_remotes"`
+	IaPaths   map[addr.IA][]*Path        `json:"ia_paths"`
 
 	FixedPath map[UdpAddrKey]*Path `json:"fixed_path"`
 }
@@ -276,12 +276,11 @@ func (s *MultiReplySelector) run() {
 				continue
 			}
 			s.SetFixedPath(remote.ToUDPAddr(), path)
-
 		}
 	}
 }
 
-func (s *MultiReplySelector) chooseRemoteInteractive() (UdpAddrKey, error) {
+func (s *MultiReplySelector) chooseRemoteInteractive() (*UdpAddrKey, error) {
 	fmt.Printf("Available remotes: \n")
 	indexToRemote := make(map[int]UdpAddrKey)
 	i := 0
@@ -300,15 +299,15 @@ func (s *MultiReplySelector) chooseRemoteInteractive() (UdpAddrKey, error) {
 	if err == nil && 0 <= remoteIndex && remoteIndex < len(s.Remotes) {
 		selectedRemote = indexToRemote[remoteIndex]
 	} else {
-		fmt.Printf("ERROR: Invalid remote index %v, valid indices range: [0, %v]\n", remoteIndex, len(s.Remotes)-1)
+		return nil, fmt.Errorf("Invalid remote index %v, valid indices range: [0, %v]\n", remoteIndex, len(s.Remotes)-1)
 	}
 
 	re := regexp.MustCompile(`\d{1,4}-([0-9a-f]{1,4}:){2}[0-9a-f]{1,4}`)
-	fmt.Printf("Using path:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote.String()), color.Cyan))
-	return selectedRemote, nil
+	fmt.Printf("Using remote:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote.String()), color.Cyan))
+	return &selectedRemote, nil
 }
 
-func (s *MultiReplySelector) choosePathInteractive(remote UdpAddrKey) (path *Path, err error) {
+func (s *MultiReplySelector) choosePathInteractive(remote *UdpAddrKey) (path *Path, err error) {
 	paths := s.IaPaths[remote.IA]
 
 	fmt.Printf("Available paths to %s\n", remote.String())
@@ -325,7 +324,7 @@ func (s *MultiReplySelector) choosePathInteractive(remote UdpAddrKey) (path *Pat
 	if err == nil && 0 <= pathIndex && pathIndex < len(paths) {
 		selectedPath = paths[pathIndex]
 	} else {
-		fmt.Printf("ERROR: Invalid path index %v, valid indices range: [0, %v]\n", pathIndex, len(paths)-1)
+		return nil, fmt.Errorf("Invalid path index %v, valid indices range: [0, %v]\n", pathIndex, len(paths)-1)
 	}
 
 	re := regexp.MustCompile(`\d{1,4}-([0-9a-f]{1,4}:){2}[0-9a-f]{1,4}`)
@@ -418,8 +417,8 @@ func makeKey(a UDPAddr) UdpAddrKey {
 
 func (u RemoteEntry) MarshalJSON() ([]byte, error) {
 	s := struct {
-		Paths int
-		Seen  int
+		Paths int `json:"paths_used"`
+		Seen  int `json:"last_seen"`
 	}{
 		Paths: len(u.paths),
 		Seen:  int(u.seen.Unix()),

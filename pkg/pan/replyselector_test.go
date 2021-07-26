@@ -32,7 +32,7 @@ func Test_remoteEntry_MarshalJSON(t *testing.T) {
 				expireTimer: nil,
 				expired:     nil,
 			},
-			want:    []byte(fmt.Sprintf("{\"Paths\":0,\"Seen\":%d}", startTime.Unix())),
+			want:    []byte(fmt.Sprintf("{\"paths_used\":0,\"last_seen\":%d}", startTime.Unix())),
 			wantErr: false,
 		},
 	}
@@ -132,7 +132,7 @@ func Test_mapUdpAddrKeyRemotes__MarshalJson(t *testing.T) {
 		{
 			name:    "Test 1",
 			remote:  remotes,
-			want:    []byte(fmt.Sprintf("{\"1-ff00:0:300,[192.168.1.1:8080]\":{\"Paths\":%d,\"Seen\":%d}}", 0, int(startTime.Unix()))),
+			want:    []byte(fmt.Sprintf("{\"1-ff00:0:300,[192.168.1.1:8080]\":{\"paths_used\":%d,\"last_seen\":%d}}", 0, int(startTime.Unix()))),
 			wantErr: false,
 		},
 	}
