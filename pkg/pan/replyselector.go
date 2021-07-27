@@ -235,7 +235,7 @@ func (s *MultiReplySelector) updateIA(src, dst UDPAddr, path *Path) {
 		// we got a new IA -> subscribe for updates
 		paths, err := pool.subscribe(s.ctx, kSrc.IA, s)
 		if err != nil {
-			fmt.Printf("Error subsribing to pool updates for %s\n", kSrc.IA.String())
+			fmt.Printf("Error subscribing to pool updates for %s\n", kSrc.IA.String())
 			os.Exit(-1)
 		}
 		s.IaPaths[kSrc.IA] = paths

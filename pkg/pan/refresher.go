@@ -94,7 +94,7 @@ func (r *refresher) run() {
 			r.refresh()
 			prevRefresh = time.Now()
 			nextRefresh := r.untilNextRefresh(prevRefresh)
-			refreshTimer.Reset(nextRefresh)
+			resetTimer(refreshTimer, nextRefresh)
 		}
 	}
 }
