@@ -29,8 +29,19 @@ type CloserListener struct {
 	Conn net.PacketConn
 }
 
+type CloserEarlyListener struct {
+	quic.EarlyListener
+	Conn net.PacketConn
+}
+
 func (l CloserListener) Close() error {
 	err := l.Listener.Close()
+	l.Conn.Close()
+	return err
+}
+
+func (l CloserEarlyListener) Close() error {
+	err := l.EarlyListener.Close()
 	l.Conn.Close()
 	return err
 }
@@ -52,5 +63,24 @@ func ListenQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
 	return CloserListener{
 		Listener: listener,
 		Conn:     conn,
+	}, nil
+}
+
+// ListenEarlyQUIC listens for QUIC connections on a SCION/UDP port.
+func ListenEarlyQUIC(ctx context.Context, local *net.UDPAddr, selector ReplySelector,
+	tlsConf *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error) {
+
+	conn, err := ListenUDP(ctx, local, selector)
+	if err != nil {
+		return nil, err
+	}
+	listener, err := quic.ListenEarly(conn, tlsConf, quicConfig)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return CloserEarlyListener{
+		EarlyListener: listener,
+		Conn:          conn,
 	}, nil
 }
