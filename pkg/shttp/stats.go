@@ -35,11 +35,22 @@ func NewSHTTPStats() http3.HTTPStats {
 func (s *SHTTPStats) getCurrentClientID(cID quic.StatsClientID) (quic.StatsClientID, error) {
 	_, ok := s.clients[cID]
 	if !ok {
-		newCID, ok := s.oldToNewID[cID]
-		if !ok {
-			return "", fmt.Errorf("%s is not a current ID", cID)
+		newCID := cID
+		for {
+			newCID, ok = s.oldToNewID[newCID]
+			if !ok {
+				// we don't know this ID in the old to new mapping
+				return "", fmt.Errorf("%s is not a current ID", cID)
+			}
+
+			// check if the new ID maps to a client entry
+			_, ok = s.clients[newCID]
+			if !ok {
+				// can't find client so maybe the client ID changed multiple times?
+				continue
+			}
+			return newCID, nil
 		}
-		return newCID, nil
 	}
 	return cID, nil
 }
@@ -59,6 +70,7 @@ func (s *SHTTPStats) migrateToNewClientID(oldID, newID quic.StatsClientID) error
 	s.clients[newID] = cEntry
 	s.oldToNewID[oldID] = newID
 	delete(s.clients, oldID)
+	fmt.Printf("Migrated %s to %s\n", oldID, newID)
 	return nil
 }
 
