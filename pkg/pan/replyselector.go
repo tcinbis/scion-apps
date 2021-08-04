@@ -219,6 +219,8 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 		go r.expired()
 	}
 	r.paths.insert(path, defaultSelectorMaxReplyPaths)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	s.Remotes[ksrc] = r
 }
 
@@ -252,6 +254,7 @@ func (s *MultiReplySelector) run() {
 		case <-s.ctx.Done():
 			s.ticker.Stop()
 			fmt.Println("MultiReplySelector stopping.")
+			os.Exit(1)
 			break
 		case <-s.ticker.C:
 			if len(s.Remotes) < 1 {
@@ -276,6 +279,8 @@ func (s *MultiReplySelector) run() {
 				continue
 			}
 			s.SetFixedPath(remote.ToUDPAddr(), path)
+		default:
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
