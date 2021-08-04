@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/flowtele"
@@ -14,6 +16,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"time"
@@ -93,6 +97,19 @@ func getQuicConf(stats http3.HTTPStats) *quic.Config {
 	}
 }
 
+func getHTTP3Server(addr string, handler http.Handler, tlsConfig *tls.Config) *http3.Server {
+	stats := shttp.NewSHTTPStats()
+	return &http3.Server{
+		Server: &http.Server{
+			Addr:      addr,
+			Handler:   handler,
+			TLSConfig: tlsConfig,
+		},
+		QuicConfig: getQuicConf(stats),
+		Stats:      stats,
+	}
+}
+
 func startTCPServer(handler http.Handler) {
 	fmt.Printf("Using QUIC\n")
 	addr := fmt.Sprintf("%s:%d", *ip, *port)
@@ -114,16 +131,7 @@ func startTCPServer(handler http.Handler) {
 		Certificates: certs,
 	}
 
-	stats := shttp.NewSHTTPStats()
-	quicServer := http3.Server{
-		Server: &http.Server{
-			Addr:      addr,
-			Handler:   handler,
-			TLSConfig: tlsConfig,
-		},
-		QuicConfig: getQuicConf(stats),
-		Stats:      stats,
-	}
+	quicServer := getHTTP3Server(addr, handler, tlsConfig)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +188,8 @@ func startSCIONServer(handler http.Handler) {
 	fmt.Printf("Using SCION\n")
 	addr := fmt.Sprintf("%s:%d", *ip, *port)
 
-	server := shttp.NewScionServer(addr, withLogger(handler), nil, getQuicConf(nil))
+	server := shttp.NewScionServer(addr, handler, nil, getQuicConf(nil))
+	server.Server = getHTTP3Server(addr, handler, nil)
 	server.Server.SetNewStreamCallback(func(sess *quic.EarlySession, strID quic.StreamID) {
 		fmt.Printf("%v %v\n", time.Now(), sess)
 		fmt.Printf("%v: Session to %s open.\n", time.Now(), (*sess).RemoteAddr())
@@ -194,7 +203,7 @@ func startSCIONServer(handler http.Handler) {
 		w.Header().Add("Access-Control-Allow-Headers", "*")
 		w.Header().Add("Access-Control-Allow-Origin", "*")
 		w.Header().Add("Access-Control-Allow-Methods", "*")
-		log.Printf("%s", r.RequestURI)
+		//log.Printf("%s", r.RequestURI)
 		handler.ServeHTTP(w, r)
 	})
 
@@ -203,18 +212,62 @@ func startSCIONServer(handler http.Handler) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println(udpPacketCon.LocalAddr())
 	go func() {
 		defer slog.HandlePanic()
-
 		server.Serve(udpPacketCon)
 	}()
+
+	go func() {
+		selector, ok := udpPacketCon.GetSelector().(*pan.MultiReplySelector)
+		if !ok {
+			fmt.Println("Error casting reply selector")
+			os.Exit(1)
+		}
+
+		for {
+			statsExporter(server.Stats.All(), selector)
+			time.Sleep(1 * time.Second)
+		}
+	}()
+
 	for {
+		allData := server.Stats.All()
+		sort.Slice(allData, func(i, j int) bool {
+			return allData[i].ClientID > allData[j].ClientID
+		})
+		if len(allData) > 0 {
+			for _, entry := range allData {
+				fmt.Println(entry.String())
+				sess := checkFlowTeleSession(&entry.Session)
+				(*sess).SetFixedRate(1000 * KBit)
+			}
+			fmt.Println()
+		}
 		time.Sleep(1 * time.Second)
-		//udpPacketCon.GetSelector().ReplyPath()
-
 	}
+}
 
-	//log.Fatal(server.ListenAndServe())
+func statsExporter(httpStats []*http3.StatusEntry, panStats *pan.MultiReplySelector) {
+	writeJson(httpStats, "http.json")
+	writeJson(panStats, "pan.json")
+}
+
+func writeJson(obj interface{}, filename string) {
+	res, err := json.MarshalIndent(obj, "", "\t")
+	check(err)
+	f, err := os.Create(path.Join("/home/tom/go/src/scion-apps/_examples/flowtele/", filename))
+	check(err)
+	defer f.Close()
+
+	check(f.Truncate(0))
+	_, err = f.Seek(0, 0)
+	check(err)
+
+	w := bufio.NewWriter(f)
+	_, err = w.Write(res)
+	check(err)
+	w.Flush()
 }
 
 func main() {
@@ -279,4 +332,12 @@ func checkFlowTeleSession(sess *quic.Session) *quic.FlowTeleSession {
 		return nil
 	}
 	return &fs
+}
+
+// Check just ensures the error is nil, or complains and quits
+func check(e error) {
+	if e != nil {
+		fmt.Fprintln(os.Stderr, "Fatal error:", e)
+		os.Exit(1)
+	}
 }
