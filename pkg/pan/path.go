@@ -32,7 +32,7 @@ type Path struct {
 	Source         addr.IA
 	Destination    addr.IA
 	ForwardingPath ForwardingPath
-	Metadata       *PathMetadata // optional
+	Metadata       *PathMetadata `json:"metadata"` // optional
 	Fingerprint    PathFingerprint
 	Expiry         time.Time
 }
