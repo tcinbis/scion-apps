@@ -17,23 +17,29 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"github.com/gorilla/handlers"
+	"github.com/netsec-ethz/scion-apps/pkg/shttp"
 	"log"
 	"net/http"
 	"os"
-
-	"github.com/gorilla/handlers"
-	"github.com/netsec-ethz/scion-apps/pkg/shttp"
 )
 
 func main() {
-	port := flag.Uint("p", 443, "port the server listens on")
-	flag.Parse()
+	port := 8081
+	dir := "/home/tom/go/src/scion-apps/_examples/flowtele"
 
 	handler := handlers.LoggingHandler(
 		os.Stdout,
-		http.FileServer(http.Dir("")),
+		http.FileServer(http.Dir(dir)),
 	)
-	log.Fatal(shttp.ListenAndServe(fmt.Sprintf(":%d", *port), handler, nil, nil))
+
+	//profile.Start(profile.BlockProfile, profile.ProfilePath("."))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, r)
+	})
+
+	log.Fatal(shttp.ListenAndServe(fmt.Sprintf(":%d", port), mux, nil, nil))
 }
