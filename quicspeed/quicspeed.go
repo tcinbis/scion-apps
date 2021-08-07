@@ -53,11 +53,11 @@ func main() {
 
 func send(stream quic.Stream, payloadSize int) {
 	buffer := make([]byte, payloadSize)
-	//stream.Write([]byte{0})
-	//_, err := io.ReadFull(stream, make([]byte, 1))
-	//if err != nil {
-	//	return
-	//}
+	stream.Write([]byte{0})
+	_, err := io.ReadFull(stream, make([]byte, 1))
+	if err != nil {
+		return
+	}
 
 	for {
 		fmt.Printf("Sending %.2f MByte\n", float64(payloadSize*BYTE)/MEGABYTE)
@@ -69,11 +69,11 @@ func send(stream quic.Stream, payloadSize int) {
 }
 
 func receive(stream quic.Stream, payloadSize int) {
-	//stream.Write([]byte{0})
-	//_, err := io.ReadFull(stream, make([]byte, 1))
-	//if err != nil {
-	//	return
-	//}
+	stream.Write([]byte{0})
+	_, err := io.ReadFull(stream, make([]byte, 1))
+	if err != nil {
+		return
+	}
 
 	fmt.Println("Stream opened. Ready for receiving.")
 	buffer := make([]byte, payloadSize)
@@ -133,8 +133,8 @@ func runClient(address string, payloadSize int, interactive bool) error {
 		}
 	}()
 
-	send(stream, payloadSize)
-	//receive(stream, payloadSize)
+	//send(stream, payloadSize)
+	receive(stream, payloadSize)
 	return nil
 }
 
@@ -166,7 +166,7 @@ func runServer(port, payloadSize int, usePan bool) error {
 		return fmt.Errorf("Error accepting streams: %s\n", err)
 	}
 
-	//send(stream, payloadSize)
-	receive(stream, payloadSize)
+	send(stream, payloadSize)
+	//receive(stream, payloadSize)
 	return nil
 }
