@@ -17,7 +17,7 @@ import (
 )
 
 // TODO: Increase timeout to something more realistic
-const remoteTimeout = 5 * time.Second
+const remoteTimeout = 10 * time.Second
 
 // ReplySelector selects the reply path for WriteTo in a listener.
 type ReplySelector interface {
@@ -27,8 +27,8 @@ type ReplySelector interface {
 	SetFixedPath(dst UDPAddr, path *Path)
 	AvailablePaths() string
 	RemoteClients() []UdpAddrKey
-	RemotePaths() map[UdpAddrKey][]*Path
 	Close() error
+	Export() ([]byte, error)
 }
 
 // UdpAddrKey converts a destination's address in a key for maps
@@ -40,6 +40,7 @@ type UdpAddrKey struct {
 
 // RemoteEntry stores paths to destination. Used in ReplySelector
 type RemoteEntry struct {
+	fixedPath   *Path
 	paths       pathsMRU
 	seen        time.Time
 	expireTimer *time.Timer
@@ -59,11 +60,12 @@ type MultiReplySelector struct {
 	ticker     *time.Ticker
 	useUpdates bool
 
-	Remotes   map[UdpAddrKey]RemoteEntry `json:"remotes"`
-	IaRemotes map[addr.IA][]UdpAddrKey   `json:"ia_remotes"`
-	IaPaths   map[addr.IA][]*Path        `json:"ia_paths"`
+	Remotes     map[UdpAddrKey]RemoteEntry `json:"remotes"`
+	RemotesPath map[UdpAddrKey]*Path       `json:"remotes_path"`
+	IaRemotes   map[addr.IA][]UdpAddrKey   `json:"ia_remotes"`
+	IaPaths     map[addr.IA][]*Path        `json:"ia_paths"`
 
-	FixedPath map[UdpAddrKey]*Path `json:"fixed_path"`
+	//FixedPath map[UdpAddrKey]*Path `json:"fixed_path"`
 }
 
 var (
@@ -73,19 +75,22 @@ var (
 func NewMultiReplySelector(ctx context.Context) *MultiReplySelector {
 	rCtx, rCancel := context.WithCancel(ctx)
 	selector := &MultiReplySelector{
-		ctx:        rCtx,
-		cancel:     rCancel,
-		ticker:     time.NewTicker(10 * time.Second),
-		useUpdates: true,
-		Remotes:    make(map[UdpAddrKey]RemoteEntry),
-		IaRemotes:  make(map[addr.IA][]UdpAddrKey),
-		IaPaths:    make(map[addr.IA][]*Path),
-		FixedPath:  make(map[UdpAddrKey]*Path),
+		ctx:         rCtx,
+		cancel:      rCancel,
+		ticker:      time.NewTicker(10 * time.Second),
+		useUpdates:  true,
+		Remotes:     make(map[UdpAddrKey]RemoteEntry),
+		RemotesPath: make(map[UdpAddrKey]*Path),
+		IaRemotes:   make(map[addr.IA][]UdpAddrKey),
+		IaPaths:     make(map[addr.IA][]*Path),
+		//FixedPath:   make(map[UdpAddrKey]*Path),
 	}
 
-	go selector.run()
-
 	return selector
+}
+
+func (s *MultiReplySelector) Start() {
+	go s.run()
 }
 
 func (s *MultiReplySelector) RemoteClients() []UdpAddrKey {
@@ -97,60 +102,75 @@ func (s *MultiReplySelector) RemoteClients() []UdpAddrKey {
 	return clients
 }
 
-func (s *MultiReplySelector) RemotePaths() map[UdpAddrKey][]*Path {
-	clients := make(map[UdpAddrKey][]*Path, len(s.Remotes))
-	for addrKey, rEntry := range s.Remotes {
-		clients[addrKey] = rEntry.paths
-	}
-
-	return clients
-}
-
 func (s *MultiReplySelector) OnPathDown(PathFingerprint, PathInterface) {
 	fmt.Println("PathDown event missed/ignored in DefaultReplySelector")
 }
 
 func (s *MultiReplySelector) SetFixedPath(dst UDPAddr, path *Path) {
 	ukey := makeKey(dst)
-	s.mtx.RLock()
-	currFixed := s.FixedPath[ukey]
-	s.mtx.RUnlock()
-
-	if currFixed != path {
-		s.mtx.Lock()
-		defer s.mtx.Unlock()
-		s.FixedPath[ukey] = path
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	r, ok := s.Remotes[ukey]
+	if !ok {
+		fmt.Printf("SHIIIT")
 	}
+	r.SetFixedPath(path)
+	//currFixed := s.FixedPath[ukey]
+	//s.mtx.RUnlock()
+	//
+	//if currFixed != path {
+	//	s.mtx.Lock()
+	//	defer s.mtx.Unlock()
+	//	s.FixedPath[ukey] = path
+	//}
 }
 
 func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	ukey := makeKey(dst)
 	s.mtx.RLock()
-	p, ok := s.FixedPath[ukey]
-	s.mtx.RUnlock()
+	defer s.mtx.RUnlock()
+	r, ok := s.Remotes[ukey]
 	if !ok {
-		// We found no fixed path so check for a reply path we got from a received packet
-		s.mtx.RLock()
-		var rPath *Path
-		r, ok := s.Remotes[ukey]
-		if ok && len(r.paths) > 0 {
-			rPath = r.paths[0]
-		}
-		s.mtx.RUnlock()
-
-		if rPath == nil {
-			// only use the iaPaths if we have no reply path from a received packet
-			s.mtx.RLock()
-			paths, ok := s.IaPaths[dst.IA]
-			s.mtx.RUnlock()
-			if ok {
-				p = paths[0]
-			}
-		} else {
-			p = rPath
-		}
+		fmt.Println("!!!!Unknown destination!!!!")
+		return nil
 	}
-	return p
+
+	var rPath *Path
+	//if r.fixedPath != nil{
+	//	rPath = r.fixedPath
+	//} else {
+	rPath = r.paths[0]
+	//}
+	//if !ok {
+	//	// We found no fixed path so check for a reply path we got from a received packet
+	//	s.mtx.RLock()
+	//	var rPath *Path
+	//	r, ok := s.Remotes[ukey]
+	//	if ok && len(r.paths) > 0 {
+	//		rPath = r.paths[0]
+	//	}
+	//	s.mtx.RUnlock()
+	//
+	//	if rPath == nil {
+	//		// only use the iaPaths if we have no reply path from a received packet
+	//		s.mtx.RLock()
+	//		paths, ok := s.IaPaths[dst.IA]
+	//		s.mtx.RUnlock()
+	//		if ok {
+	//			p = paths[0]
+	//		}
+	//	} else {
+	//		p = rPath
+	//	}
+	//}
+
+	go func() {
+		s.mtx.Lock()
+		defer s.mtx.Unlock()
+		s.RemotesPath[ukey] = rPath
+		rPath.FetchMetadata()
+	}()
+	return rPath
 }
 
 // updateRemotes keeps track of the available paths for a given remote UDPAddr
@@ -161,8 +181,9 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 
 	ksrc := makeKey(src)
 	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	r, ok := s.Remotes[ksrc]
-	s.mtx.Unlock()
 	r.seen = time.Now()
 	if !ok {
 		r.expireTimer = time.NewTimer(remoteTimeout)
@@ -219,8 +240,6 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 		go r.expired()
 	}
 	r.paths.insert(path, defaultSelectorMaxReplyPaths)
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 	s.Remotes[ksrc] = r
 }
 
@@ -248,6 +267,32 @@ func (s *MultiReplySelector) updateIA(src, dst UDPAddr, path *Path) {
 	}
 }
 
+func (s *MultiReplySelector) AskPathChanges() (UDPAddr, bool) {
+	if len(s.Remotes) < 1 {
+		return UDPAddr{}, false
+	}
+	fmt.Print("Do you want to perform path selection for remotes? [y/N]: ")
+	scanner := bufio.NewScanner(os.Stdin)
+
+	scanner.Scan()
+	choice := scanner.Text()
+	if choice != "yes" && choice != "y" {
+		return UDPAddr{}, false
+	}
+	remote, err := s.chooseRemoteInteractive()
+	if err != nil {
+		fmt.Printf("Error choosing remote: %v \n", err)
+		return UDPAddr{}, false
+	}
+	path, err := s.choosePathInteractive(remote)
+	if err != nil {
+		fmt.Printf("Error choosing path: %v \n", err)
+		return UDPAddr{}, false
+	}
+	s.SetFixedPath(remote.ToUDPAddr(), path)
+	return remote.ToUDPAddr(), true
+}
+
 func (s *MultiReplySelector) run() {
 	for {
 		select {
@@ -255,30 +300,8 @@ func (s *MultiReplySelector) run() {
 			s.ticker.Stop()
 			fmt.Println("MultiReplySelector stopping.")
 			os.Exit(1)
-			break
 		case <-s.ticker.C:
-			if len(s.Remotes) < 1 {
-				continue
-			}
-			fmt.Print("Do you want to perform path selection for remotes? [y/N]: ")
-			scanner := bufio.NewScanner(os.Stdin)
-
-			scanner.Scan()
-			choice := scanner.Text()
-			if choice != "yes" && choice != "y" {
-				continue
-			}
-			remote, err := s.chooseRemoteInteractive()
-			if err != nil {
-				fmt.Printf("Error choosing remote: %v \n", err)
-				continue
-			}
-			path, err := s.choosePathInteractive(remote)
-			if err != nil {
-				fmt.Printf("Error choosing path: %v \n", err)
-				continue
-			}
-			s.SetFixedPath(remote.ToUDPAddr(), path)
+			s.AskPathChanges()
 		default:
 			time.Sleep(5 * time.Second)
 		}
@@ -340,6 +363,12 @@ func (s *MultiReplySelector) choosePathInteractive(remote *UdpAddrKey) (path *Pa
 func (s *MultiReplySelector) Close() error {
 	s.cancel()
 	return nil
+}
+
+func (s *MultiReplySelector) Export() ([]byte, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return json.Marshal(s)
 }
 
 func (s *MultiReplySelector) refresh(dst addr.IA, paths []*Path) {
@@ -433,6 +462,10 @@ func (u RemoteEntry) MarshalJSON() ([]byte, error) {
 
 func (u RemoteEntry) MarshalText() ([]byte, error) {
 	return []byte(fmt.Sprintf("paths:%d,seen:%d", len(u.paths), int(u.seen.Unix()))), nil
+}
+
+func (u RemoteEntry) SetFixedPath(p *Path) {
+	u.fixedPath = p
 }
 
 func (p *pathsMRU) insert(path *Path, maxEntries int) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
+	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/scionproto/scion/go/lib/log"
 	"os"
 	"strings"
@@ -11,8 +12,13 @@ import (
 	"time"
 )
 
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
 const (
-	clientTimeout = 30 * time.Second
+	clientTimeout      = 30 * time.Second
+	unknownConnIDError = Error("No current and unknown connection ID")
 )
 
 // SHTTPStats implements the HTTPStats interface to track HTTP requests of multiple clients.
@@ -40,7 +46,7 @@ func (s *SHTTPStats) getCurrentClientID(cID quic.StatsClientID) (quic.StatsClien
 			newCID, ok = s.oldToNewID[newCID]
 			if !ok {
 				// we don't know this ID in the old to new mapping
-				return "", fmt.Errorf("%s is not a current ID", cID)
+				return "", unknownConnIDError
 			}
 
 			// check if the new ID maps to a client entry
@@ -71,6 +77,15 @@ func (s *SHTTPStats) migrateToNewClientID(oldID, newID quic.StatsClientID) error
 	s.oldToNewID[oldID] = newID
 	delete(s.clients, oldID)
 	fmt.Printf("Migrated %s to %s\n", oldID, newID)
+	return nil
+}
+
+func (s *SHTTPStats) GetSessionByRemoteAddr(addr pan.UDPAddr) quic.Session {
+	for _, remote := range s.clients {
+		if addr.String() == remote.Remote.String() {
+			return remote.Session
+		}
+	}
 	return nil
 }
 
@@ -158,7 +173,13 @@ func (s *SHTTPStats) AddFlow(cID quic.StatsClientID) {
 	defer s.mtx.Unlock()
 
 	cID, err := s.getCurrentClientID(cID)
-	check(err)
+	if err != nil {
+		if err == unknownConnIDError {
+			fmt.Println("Ignoring AddFlow update due to unknown ID.")
+			return
+		}
+		check(err)
+	}
 	check(s.addFlow(cID))
 }
 
@@ -199,7 +220,13 @@ func (s *SHTTPStats) LastRequest(cID quic.StatsClientID, r string) {
 	defer s.mtx.Unlock()
 
 	cID, err := s.getCurrentClientID(cID)
-	check(err)
+	if err != nil {
+		if err == unknownConnIDError {
+			fmt.Println("Ignoring request update due to unknown ID.")
+			return
+		}
+		check(err)
+	}
 	check(s.lastRequest(cID, r))
 }
 
@@ -214,7 +241,13 @@ func (s *SHTTPStats) LastCwnd(cID quic.StatsClientID, c int) {
 	defer s.mtx.Unlock()
 
 	cID, err := s.getCurrentClientID(cID)
-	check(err)
+	if err != nil {
+		if err == unknownConnIDError {
+			fmt.Println("Ignoring CWND update due to unknown ID.")
+			return
+		}
+		check(err)
+	}
 	check(s.lastCwnd(cID, c))
 }
 

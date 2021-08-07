@@ -78,7 +78,7 @@ func getQuicConf(stats http3.HTTPStats) *quic.Config {
 	}, func(t time.Time, newSlowStartThreshold uint64) {
 
 	}, func(t time.Time, lostRatio float64) {
-
+		fmt.Println(lostRatio)
 	}, func(t time.Time, congestionWindow uint64, packetsInFlight uint64, ackedBytes uint64) {
 
 	})
@@ -94,19 +94,6 @@ func getQuicConf(stats http3.HTTPStats) *quic.Config {
 		//KeepAlive: true,
 		FlowTeleSignal:       flowteleSignalInterface,
 		ConnectionIDObserver: ob,
-	}
-}
-
-func getHTTP3Server(addr string, handler http.Handler, tlsConfig *tls.Config) *http3.Server {
-	stats := shttp.NewSHTTPStats()
-	return &http3.Server{
-		Server: &http.Server{
-			Addr:      addr,
-			Handler:   handler,
-			TLSConfig: tlsConfig,
-		},
-		QuicConfig: getQuicConf(stats),
-		Stats:      stats,
 	}
 }
 
@@ -131,7 +118,16 @@ func startTCPServer(handler http.Handler) {
 		Certificates: certs,
 	}
 
-	quicServer := getHTTP3Server(addr, handler, tlsConfig)
+	stats := shttp.NewSHTTPStats()
+	quicServer := &http3.Server{
+		Server: &http.Server{
+			Addr:      addr,
+			Handler:   handler,
+			TLSConfig: tlsConfig,
+		},
+		QuicConfig: getQuicConf(stats),
+		Stats:      stats,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -188,14 +184,15 @@ func startSCIONServer(handler http.Handler) {
 	fmt.Printf("Using SCION\n")
 	addr := fmt.Sprintf("%s:%d", *ip, *port)
 
-	server := shttp.NewScionServer(addr, handler, nil, getQuicConf(nil))
-	server.Server = getHTTP3Server(addr, handler, nil)
-	server.Server.SetNewStreamCallback(func(sess *quic.EarlySession, strID quic.StreamID) {
-		fmt.Printf("%v %v\n", time.Now(), sess)
-		fmt.Printf("%v: Session to %s open.\n", time.Now(), (*sess).RemoteAddr())
-		fmt.Printf("%v %v\n", time.Now(), server.Server.GetSessions())
-		//(*checkFlowTeleSession(checkSession(sess))).SetFixedRate(500 * KByte)
-	})
+	stats := shttp.NewSHTTPStats()
+	server := shttp.NewScionServer(addr, handler, nil, getQuicConf(stats))
+	server.Server.Stats = stats
+	//server.Server.SetNewStreamCallback(func(sess *quic.EarlySession, strID quic.StreamID) {
+	//	fmt.Printf("%v %v\n", time.Now(), sess)
+	//	fmt.Printf("%v: Session to %s open.\n", time.Now(), (*sess).RemoteAddr())
+	//	fmt.Printf("%v %v\n", time.Now(), server.Server.GetSessions())
+	//	//(*checkFlowTeleSession(checkSession(sess))).SetFixedRate(500 * KByte)
+	//})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -218,32 +215,46 @@ func startSCIONServer(handler http.Handler) {
 		server.Serve(udpPacketCon)
 	}()
 
-	go func() {
-		selector, ok := udpPacketCon.GetSelector().(*pan.MultiReplySelector)
-		if !ok {
-			fmt.Println("Error casting reply selector")
-			os.Exit(1)
-		}
+	//selector, ok := udpPacketCon.GetSelector().(*pan.MultiReplySelector)
+	//if !ok {
+	//	fmt.Println("Error casting reply selector")
+	//	os.Exit(1)
+	//}
 
-		for {
-			statsExporter(server.Stats.All(), selector)
-			time.Sleep(1 * time.Second)
-		}
-	}()
+	//go func(sel *pan.MultiReplySelector) {
+	//	for {
+	//		remote, ok := sel.AskPathChanges()
+	//		if ok {
+	//			s, ok := server.Stats.(*shttp.SHTTPStats)
+	//			if !ok {
+	//				fmt.Println("Error casting HTTP Server stats.")
+	//			}
+	//			s.GetSessionByRemoteAddr(remote).MigrateConnection()
+	//		}
+	//		time.Sleep(1 * time.Second)
+	//	}
+	//}(selector)
+	//
+	//go func(sel *pan.MultiReplySelector) {
+	//	for {
+	//		statsExporter(server.Stats.All(), sel)
+	//		time.Sleep(5 * time.Second)
+	//	}
+	//}(selector)
 
 	for {
-		allData := server.Stats.All()
-		sort.Slice(allData, func(i, j int) bool {
-			return allData[i].ClientID > allData[j].ClientID
-		})
-		if len(allData) > 0 {
-			for _, entry := range allData {
-				fmt.Println(entry.String())
-				sess := checkFlowTeleSession(&entry.Session)
-				(*sess).SetFixedRate(1000 * KBit)
-			}
-			fmt.Println()
-		}
+		//allData := server.Stats.All()
+		//sort.Slice(allData, func(i, j int) bool {
+		//	return allData[i].ClientID > allData[j].ClientID
+		//})
+		//if len(allData) > 0 {
+		//	for _, entry := range allData {
+		//		fmt.Println(entry.String())
+		//		//sess := checkFlowTeleSession(&entry.Session)
+		//		//(*sess).SetFixedRate(1000 * KBit)
+		//	}
+		//	fmt.Println()
+		//}
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -254,7 +265,14 @@ func statsExporter(httpStats []*http3.StatusEntry, panStats *pan.MultiReplySelec
 }
 
 func writeJson(obj interface{}, filename string) {
-	res, err := json.MarshalIndent(obj, "", "\t")
+	var res []byte
+	var err error
+
+	if eObj, ok := obj.(interface{ Export() ([]byte, error) }); ok {
+		res, err = eObj.Export()
+	} else {
+		res, err = json.MarshalIndent(obj, "", "\t")
+	}
 	check(err)
 	f, err := os.Create(path.Join("/home/tom/go/src/scion-apps/_examples/flowtele/", filename))
 	check(err)
