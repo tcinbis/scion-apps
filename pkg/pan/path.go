@@ -88,6 +88,8 @@ func (p *Path) FetchMetadata() {
 	if p.Metadata != nil {
 		return
 	}
+	start := time.Now()
+	fmt.Printf("Start fetching metadata...\n")
 	paths, err := appnet.QueryPaths(p.Destination)
 	if err != nil {
 		fmt.Printf("Error fetching metadata: %v\n", err)
@@ -114,6 +116,7 @@ func (p *Path) FetchMetadata() {
 	if !found {
 		fmt.Println("Error fetching metadata. Couldn't find path with matching fingerprint")
 	}
+	fmt.Printf("Fetching complete. Took: %s\n", time.Now().Sub(start).String())
 }
 
 func (p *Path) String() string {
