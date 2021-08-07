@@ -18,13 +18,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/lucas-clemente/quic-go"
 	"net"
 	"net/http"
 
+	"github.com/lucas-clemente/quic-go"
+	"github.com/netsec-ethz/scion-apps/pkg/pan"
+
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet/appquic"
-	"github.com/netsec-ethz/scion-apps/pkg/pan"
 )
 
 // Server wraps a http3.Server making it work with SCION
