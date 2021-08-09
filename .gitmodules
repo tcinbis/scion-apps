@@ -1,8 +1,12 @@
 [submodule "scion"]
 	path = scion
 	url = git@github.com:tcinbis/scion.git
-	branch = scionlab
+	branch = tcinbis/flowtele
 [submodule "quic-go"]
 	path = quic-go
 	url = git@github.com:tcinbis/quic-go.git
 	branch = tcinbis/flowtele-v0.21.0
+[submodule "csl331"]
+	path = csl331
+	url = git@bitbucket.org:JasonSong2019/csl331.git
+    branch = scion
