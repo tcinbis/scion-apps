@@ -30,6 +30,7 @@ const (
 func main() {
 	serverAddrStr := flag.String("s", "", "Server address (<ISD-AS,[IP]> or <hostname>, optionally with appended <:port>)")
 	uriStr := flag.String("u", "", "URI to request from server.")
+	fileEnding := flag.String("f", ".m4v", "Suffix to filter links by.")
 	flag.Parse()
 
 	if len(*serverAddrStr) == 0 {
@@ -58,7 +59,7 @@ func main() {
 	}
 
 	for _, l := range links {
-		if strings.HasSuffix(l, ".mp4") {
+		if strings.HasSuffix(l, *fileEnding) {
 			// download it!
 			query = fmt.Sprintf("https://%s/%s/%s", *serverAddrStr, *uriStr, l)
 			tStart := time.Now()

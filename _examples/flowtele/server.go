@@ -215,11 +215,48 @@ func startSCIONServer(handler http.Handler) {
 		server.Serve(udpPacketCon)
 	}()
 
-	//selector, ok := udpPacketCon.GetSelector().(*pan.MultiReplySelector)
-	//if !ok {
-	//	fmt.Println("Error casting reply selector")
-	//	os.Exit(1)
-	//}
+	selector, ok := udpPacketCon.GetSelector().(*pan.MultiReplySelector)
+	if !ok {
+		fmt.Println("Error casting reply selector")
+		os.Exit(1)
+	}
+
+	serverStats, ok := server.Stats.(*shttp.SHTTPStats)
+	if !ok {
+		fmt.Println("Error casting HTTP Server stats.")
+	}
+
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			for _, b := range serverStats.All() {
+				rAddr, ok := b.Remote.(pan.UDPAddr)
+				if !ok {
+					fmt.Println("Error casting address to UDPAddr")
+					continue
+				}
+				selector.UpdateRemoteCwnd(rAddr, uint64(b.LastCwnd.Mean()))
+			}
+			fmt.Printf("Paths without CWND measurement: %v\n", pan.PathsWithoutCwnd())
+		}
+	}()
+
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+			for _, p := range pan.PathsWithoutCwnd() {
+				for _, rAddrKey := range selector.RemoteClients() {
+					if p.Destination != rAddrKey.IA {
+						continue
+					}
+					selector.SetFixedPath(rAddrKey.ToUDPAddr(), p)
+					if entry := serverStats.GetHTTPStatusByRemoteAddr(rAddrKey.ToUDPAddr()); entry != nil {
+						entry.LastCwnd.Clear()
+					}
+				}
+			}
+		}
+	}()
 
 	//go func(sel *pan.MultiReplySelector) {
 	//	for {
@@ -235,26 +272,26 @@ func startSCIONServer(handler http.Handler) {
 	//	}
 	//}(selector)
 	//
-	//go func(sel *pan.MultiReplySelector) {
-	//	for {
-	//		statsExporter(server.Stats.All(), sel)
-	//		time.Sleep(5 * time.Second)
-	//	}
-	//}(selector)
+	go func(sel *pan.MultiReplySelector) {
+		for {
+			statsExporter(server.Stats.All(), sel)
+			time.Sleep(5 * time.Second)
+		}
+	}(selector)
 
 	for {
-		//allData := server.Stats.All()
-		//sort.Slice(allData, func(i, j int) bool {
-		//	return allData[i].ClientID > allData[j].ClientID
-		//})
-		//if len(allData) > 0 {
-		//	for _, entry := range allData {
-		//		fmt.Println(entry.String())
-		//		//sess := checkFlowTeleSession(&entry.Session)
-		//		//(*sess).SetFixedRate(1000 * KBit)
-		//	}
-		//	fmt.Println()
-		//}
+		allData := server.Stats.All()
+		sort.Slice(allData, func(i, j int) bool {
+			return allData[i].ClientID > allData[j].ClientID
+		})
+		if len(allData) > 0 {
+			for _, entry := range allData {
+				fmt.Println(entry.String())
+				//sess := checkFlowTeleSession(&entry.Session)
+				//(*sess).SetFixedRate(1000 * KBit)
+			}
+			fmt.Println()
+		}
 		time.Sleep(1 * time.Second)
 	}
 }
