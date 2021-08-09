@@ -1,22 +1,26 @@
 # FShaper Tutorial
 
-On your control machine (not the RTT machines)
+On each machine  run the code below to fetch the repo.
 ```bash
-git clone git@github.com:tcinbis/scion.git
-cd scion && git checkout tcinbis/flowtele
-make all
-
-./sync_repo.sh
+mkdir -p ~/go/src && cd ~/go/src/ && git clone git@github.com:tcinbis/scio-apps.git
+cd scion-apps && git checkout tcinbis/flowtele-pan
+go mod download
 ```
 
+Then on the machine sending the data we want to run `athena`, `fshaper` and the flowtele socket which sends data.
+
 ```bash
+# TODO: Replace these values with the according IPs and ports for the machines you are using.
+export REMOTE_IP="192.168.178.99"
+export LOCAL_IP="192.168.178.91"
+export REMOTE_PORT="51000"
+export REMOTE_IA="17-ffaa:1:ec7"
+
 # On flowtele-ethz
-cd ~/go/src/scion/csl331/dbus && python3.6 athena_m2.py 2
-cd ~/go/src/scion/ && ./bazel-bin/go/flowtele/fshaper/fshaper_/fshaper --scion --ip 3.12.159.15 --port 51000
-cd ~/go/src/scion/ && ./bazel-bin/go/flowtele/flowtele_socket_/flowtele_socket --remote-ia 16-ffaa:0:1004 --ip 3.12.159.15 --quic-sender-only --paths-file paths.txt --paths-index 0 --scion --num 3 --local-ip 129.132.121.187
-```
+cd ~/go/src/scion-apps/csl331/dbus && python3.6 athena_m2.py 2
+cd ~/go/src/scion-apps/_examples/flowtele/fshaper && go run . --ip $REMOTE_IP --port $REMOTE_PORT
+cd ~/go/src/scion-apps/_examples/flowtele && go run . --scion --remote-ia $REMOTE_IA --ip $REMOTE_IP --quic-sender-only --num 3 --local-ip $LOCAL_IP --paths-file paths.txt --paths-index 0
 
-```bash
 # On flowtele-ohio
-cd ~/go/src/scion/ && ./bazel-bin/go/flowtele/listener/flowtele_listener_/flowtele_listener --ip 3.12.159.15 --scion --port 51000 --key go/flowtele/tls.key --pem go/flowtele/tls.pem --num 10
+cd ~/go/src/scion-apps/_examples/flowtele/listener && go run . --scion --ip $REMOTE_IP --port $REMOTE_PORT --key $(pwd)/../tls.key --pem $(pwd)/../tls.pem --num 10
 ```
