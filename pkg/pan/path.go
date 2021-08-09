@@ -86,6 +86,10 @@ func (p *Path) Reversed() (*Path, error) {
 
 func (p *Path) FetchMetadata() {
 	if p.Metadata != nil {
+		if p.Metadata.Cwnd == 0 {
+			// Try fetching paths CWND
+			p.Metadata.Cwnd = stats.GetPathCwnd(p.Fingerprint)
+		}
 		return
 	}
 	start := time.Now()
@@ -108,6 +112,7 @@ func (p *Path) FetchMetadata() {
 			Notes:        snetMetadata.Notes,
 		}
 		fingerprint := pathSequenceFromInterfaces(meta.Interfaces).Fingerprint()
+		meta.Cwnd = stats.GetPathCwnd(fingerprint)
 		if fingerprint == p.Fingerprint {
 			p.Metadata = meta
 			found = true

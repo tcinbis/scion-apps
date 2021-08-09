@@ -45,6 +45,8 @@ const (
 	defaultSelectorMaxReplyPaths = 4
 
 	statsNumLatencySamples = 4
+
+	statsNumCwndSamples = 50
 )
 
 // maxTime is the maximum usable time value (https://stackoverflow.com/a/32620397)

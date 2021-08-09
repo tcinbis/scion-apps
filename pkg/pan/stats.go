@@ -29,10 +29,21 @@ func init() {
 }
 
 type PathStats struct {
+	Path *Path
 	// Was notified down at the recorded time (0 for never notified down)
 	IsNotifiedDown time.Time
 	// Observed Latency
 	Latency []StatsLatencySample
+	// Observed CWND
+	Cwnd []StatsCwndSample
+}
+
+func NewPathStats(p *Path) PathStats {
+	return PathStats{
+		Path:    p,
+		Cwnd:    make([]StatsCwndSample, 0),
+		Latency: make([]StatsLatencySample, 0),
+	}
 }
 
 type PathInterfaceStats struct {
@@ -43,6 +54,11 @@ type PathInterfaceStats struct {
 type StatsLatencySample struct {
 	Time  time.Time
 	Value time.Duration
+}
+
+type StatsCwndSample struct {
+	Time  time.Time
+	Value uint64
 }
 
 type pathDownNotifyee interface {
@@ -61,10 +77,13 @@ type pathStatsDB struct {
 	subscribers []pathDownNotifyee
 }
 
-func (s *pathStatsDB) RegisterLatency(p PathFingerprint, latency time.Duration) {
+func (s *pathStatsDB) RegisterLatency(p *Path, latency time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	ps := s.paths[p]
+	ps, ok := s.paths[p.Fingerprint]
+	if !ok {
+		ps = NewPathStats(p)
+	}
 	if len(ps.Latency) < statsNumLatencySamples {
 		ps.Latency = append(ps.Latency, StatsLatencySample{
 			Time:  time.Now(),
@@ -72,12 +91,71 @@ func (s *pathStatsDB) RegisterLatency(p PathFingerprint, latency time.Duration) 
 		})
 	} else {
 		copy(ps.Latency[0:statsNumLatencySamples-1], ps.Latency[1:statsNumLatencySamples])
-		ps.Latency[statsNumLatencySamples] = StatsLatencySample{
+		ps.Latency[statsNumLatencySamples-1] = StatsLatencySample{
 			Time:  time.Now(),
 			Value: latency,
 		}
 	}
-	s.paths[p] = ps
+	s.paths[p.Fingerprint] = ps
+}
+
+func (s *pathStatsDB) RegisterPath(p *Path) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if _, ok := s.paths[p.Fingerprint]; !ok {
+		s.paths[p.Fingerprint] = NewPathStats(p)
+	}
+}
+
+func (s *pathStatsDB) RegisterCwnd(p *Path, cwnd uint64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	ps, ok := s.paths[p.Fingerprint]
+	if !ok {
+		ps = NewPathStats(p)
+	}
+	if len(ps.Cwnd) < statsNumCwndSamples {
+		ps.Cwnd = append(ps.Cwnd, StatsCwndSample{
+			Time:  time.Now(),
+			Value: cwnd,
+		})
+	} else {
+		copy(ps.Cwnd[0:statsNumCwndSamples-1], ps.Cwnd[1:statsNumCwndSamples])
+		ps.Cwnd[statsNumCwndSamples-1] = StatsCwndSample{
+			Time:  time.Now(),
+			Value: cwnd,
+		}
+	}
+	ps.Path.Metadata.Cwnd = cwnd
+	s.paths[p.Fingerprint] = ps
+}
+
+func (s *pathStatsDB) GetPathCwnd(p PathFingerprint) uint64 {
+	if ps, ok := s.paths[p]; ok {
+		if l := len(ps.Cwnd); l > 0 {
+			return ps.Cwnd[l-1].Value
+		}
+	}
+	return 0
+}
+
+func PathsWithoutCwnd() []*Path {
+	return stats.PathsWithoutCwnd()
+}
+
+func (s *pathStatsDB) PathsWithoutCwnd() []*Path {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	missing := make([]*Path, 0)
+
+	for _, ps := range s.paths {
+		if len(ps.Cwnd) > 0 {
+			continue
+		}
+		missing = append(missing, ps.Path)
+	}
+
+	return missing
 }
 
 func FirstMoreAlive(p *Path, paths []*Path) int {

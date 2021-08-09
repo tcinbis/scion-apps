@@ -25,6 +25,7 @@ type ReplySelector interface {
 	OnPacketReceived(src, dst UDPAddr, path *Path)
 	OnPathDown(PathFingerprint, PathInterface)
 	SetFixedPath(dst UDPAddr, path *Path)
+	ClearFixedPath(dst UDPAddr)
 	AvailablePaths() string
 	RemoteClients() []UdpAddrKey
 	Close() error
@@ -64,8 +65,6 @@ type MultiReplySelector struct {
 	RemotesPath map[UdpAddrKey]*Path       `json:"remotes_path"`
 	IaRemotes   map[addr.IA][]UdpAddrKey   `json:"ia_remotes"`
 	IaPaths     map[addr.IA][]*Path        `json:"ia_paths"`
-
-	//FixedPath map[UdpAddrKey]*Path `json:"fixed_path"`
 }
 
 var (
@@ -83,7 +82,6 @@ func NewMultiReplySelector(ctx context.Context) *MultiReplySelector {
 		RemotesPath: make(map[UdpAddrKey]*Path),
 		IaRemotes:   make(map[addr.IA][]UdpAddrKey),
 		IaPaths:     make(map[addr.IA][]*Path),
-		//FixedPath:   make(map[UdpAddrKey]*Path),
 	}
 
 	return selector
@@ -91,6 +89,24 @@ func NewMultiReplySelector(ctx context.Context) *MultiReplySelector {
 
 func (s *MultiReplySelector) Start() {
 	go s.run()
+}
+
+func (s *MultiReplySelector) UpdateRemoteCwnd(addr UDPAddr, cwnd uint64) {
+	ukey := makeKey(addr)
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	rEntry, ok := s.Remotes[ukey]
+	if !ok {
+		fmt.Printf("Unkown remote with key: %s", ukey.String())
+		return
+	}
+	currentPath := rEntry.paths[0]
+	if rEntry.fixedPath != nil {
+		currentPath = rEntry.fixedPath
+	}
+	fmt.Printf("Register CWND %d on path: %s\n", cwnd, currentPath.String())
+	go stats.RegisterCwnd(currentPath, cwnd)
 }
 
 func (s *MultiReplySelector) RemoteClients() []UdpAddrKey {
@@ -108,21 +124,34 @@ func (s *MultiReplySelector) OnPathDown(PathFingerprint, PathInterface) {
 
 func (s *MultiReplySelector) SetFixedPath(dst UDPAddr, path *Path) {
 	ukey := makeKey(dst)
+
+	if path == nil {
+		fmt.Println("Trying to set fixed path which is NIL!")
+		return
+	}
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	r, ok := s.Remotes[ukey]
 	if !ok {
-		fmt.Printf("SHIIIT")
+		fmt.Printf("No remote for key %s found\n", ukey.String())
+		return
 	}
 	r.SetFixedPath(path)
-	//currFixed := s.FixedPath[ukey]
-	//s.mtx.RUnlock()
-	//
-	//if currFixed != path {
-	//	s.mtx.Lock()
-	//	defer s.mtx.Unlock()
-	//	s.FixedPath[ukey] = path
-	//}
+	s.Remotes[ukey] = r
+	fmt.Printf("Set path %s for %s\n", path.String(), ukey.String())
+}
+
+func (s *MultiReplySelector) ClearFixedPath(dst UDPAddr) {
+	ukey := makeKey(dst)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	r, ok := s.Remotes[ukey]
+	if !ok {
+		fmt.Printf("No remote for key %s found\n", ukey.String())
+	}
+	r.ClearFixedPath()
+	s.Remotes[ukey] = r
 }
 
 func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
@@ -136,11 +165,11 @@ func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	}
 
 	var rPath *Path
-	//if r.fixedPath != nil{
-	//	rPath = r.fixedPath
-	//} else {
-	rPath = r.paths[0]
-	//}
+	if r.fixedPath != nil {
+		rPath = r.fixedPath
+	} else {
+		rPath = r.paths[0]
+	}
 	//if !ok {
 	//	// We found no fixed path so check for a reply path we got from a received packet
 	//	s.mtx.RLock()
@@ -168,6 +197,7 @@ func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 		s.mtx.Lock()
 		defer s.mtx.Unlock()
 		s.RemotesPath[ukey] = rPath
+		stats.RegisterPath(rPath)
 		rPath.FetchMetadata()
 	}()
 	return rPath
@@ -259,6 +289,14 @@ func (s *MultiReplySelector) updateIA(src, dst UDPAddr, path *Path) {
 			fmt.Printf("Error subscribing to pool updates for %s\n", kSrc.IA.String())
 			os.Exit(-1)
 		}
+
+		go func() {
+			// register new paths to destination IA with pathDB
+			for _, p := range paths {
+				stats.RegisterPath(p)
+			}
+		}()
+
 		s.IaPaths[kSrc.IA] = paths
 	}
 	if _, ok := s.Remotes[kSrc]; !ok {
@@ -449,7 +487,7 @@ func makeKey(a UDPAddr) UdpAddrKey {
 	return k
 }
 
-func (u RemoteEntry) MarshalJSON() ([]byte, error) {
+func (u *RemoteEntry) MarshalJSON() ([]byte, error) {
 	s := struct {
 		Paths int `json:"paths_used"`
 		Seen  int `json:"last_seen"`
@@ -460,12 +498,16 @@ func (u RemoteEntry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s)
 }
 
-func (u RemoteEntry) MarshalText() ([]byte, error) {
+func (u *RemoteEntry) MarshalText() ([]byte, error) {
 	return []byte(fmt.Sprintf("paths:%d,seen:%d", len(u.paths), int(u.seen.Unix()))), nil
 }
 
-func (u RemoteEntry) SetFixedPath(p *Path) {
+func (u *RemoteEntry) SetFixedPath(p *Path) {
 	u.fixedPath = p
+}
+
+func (u *RemoteEntry) ClearFixedPath() {
+	u.fixedPath = nil
 }
 
 func (p *pathsMRU) insert(path *Path, maxEntries int) {

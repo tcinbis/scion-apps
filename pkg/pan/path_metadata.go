@@ -74,6 +74,8 @@ type PathMetadata struct {
 	// Notes contains the notes added by ASes on the path, in the order of occurrence.
 	// Entry i is the note of AS i on the path.
 	Notes []string `json:"notes"`
+
+	Cwnd uint64 `json:"cwnd"`
 }
 
 type GeoCoordinates = snet.GeoCoordinates
@@ -92,6 +94,7 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 		LinkType:     append(pm.LinkType[:0:0], pm.LinkType...),
 		InternalHops: append(pm.InternalHops[:0:0], pm.InternalHops...),
 		Notes:        append(pm.Notes[:0:0], pm.Notes...),
+		Cwnd:         pm.Cwnd,
 	}
 }
 

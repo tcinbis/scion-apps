@@ -89,6 +89,15 @@ func (s *SHTTPStats) GetSessionByRemoteAddr(addr pan.UDPAddr) quic.Session {
 	return nil
 }
 
+func (s *SHTTPStats) GetHTTPStatusByRemoteAddr(addr pan.UDPAddr) *http3.StatusEntry {
+	for _, remote := range s.clients {
+		if addr.String() == remote.Remote.String() {
+			return remote
+		}
+	}
+	return nil
+}
+
 func (s *SHTTPStats) retireAfterInactivity(cID quic.StatsClientID) {
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
@@ -231,7 +240,7 @@ func (s *SHTTPStats) LastRequest(cID quic.StatsClientID, r string) {
 }
 
 func (s *SHTTPStats) lastCwnd(cID quic.StatsClientID, c int) error {
-	s.clients[cID].LastCwnd = c
+	s.clients[cID].LastCwnd.Add(c)
 	s.clients[cID].Updated()
 	return nil
 }
