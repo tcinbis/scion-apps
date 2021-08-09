@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.0 // indirect
 	github.com/bclicn/color v0.0.0-20180711051946-108f2023dc84
+	github.com/godbus/dbus/v5 v5.0.4 // indirect
 	github.com/google/pprof v0.0.0-20210804190019-f964ff605595 // indirect
 	github.com/gorilla/handlers v1.5.1
 	github.com/ianlancetaylor/demangle v0.0.0-20210724235854-665d3a6fe486 // indirect

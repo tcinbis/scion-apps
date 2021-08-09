@@ -63,3 +63,5 @@ _examples/shttp/server/server
 .DS_Store
 .gomobilebuild
 *.xcframework
+
+scion_lab_tcinbi*/
