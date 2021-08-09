@@ -1,0 +1,21 @@
+load("//lint:go.bzl", "go_library")
+load("//:scion.bzl", "scion_go_binary")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "dbus_base.go",
+        "fshaper_dbus.go",
+        "fshaper_signal.go",
+        "quic_dbus.go",
+        "quic_signal.go",
+        "signal_base.go",
+    ],
+    importpath = "github.com/scionproto/scion/go/flowtele/dbus",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_godbus_dbus_v5//:go_default_library",
+        "@com_github_godbus_dbus_v5//introspect:go_default_library",
+        "@com_github_lucas_clemente_quic_go//:go_default_library",
+    ],
+)
