@@ -20,7 +20,7 @@ type quicDbusMethodInterface struct {
 	quicDbus *QuicDbus
 }
 
-func (qdbmi quicDbusMethodInterface) ApplyControl(dType uint32, beta float64, cwnd_adjust int64, cwnd_max_adjust int64, use_conservative_allocation bool) (ret bool, dbusError *dbus.Error) {
+func (qdbmi quicDbusMethodInterface) ApplyControl(dType uint32, beta float64, cwnd_adjust int64, cwnd_max_adjust int64, use_conservative_allocation bool) (bool, *dbus.Error) {
 	start := time.Now()
 	qdb := qdbmi.quicDbus
 	session := qdb.Session

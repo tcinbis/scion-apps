@@ -21,7 +21,7 @@ func (fshaperDbus fshaperDbusMethodInterface) ApplyControl(dType uint32, flow ui
 	// fshaperDbusMethodInterface.dbusBase.Send(...)
 	start := time.Now()
 	flows := []uint64{flow0, flow1, flow2, flow3, flow4, flow5, flow6, flow7, flow8, flow9, flow10}
-	fshaperDbus.fshaperDbus.Log("received ApplyControl(%d, %d, %+v)", dType, flow, flows)
+	fshaperDbus.fshaperDbus.Log("FShaper received ApplyControl(%d, %d, %+v)", dType, flow, flows)
 	var quicApplyControlDone []chan *dbus.Call
 	for i := 0; i < fshaperDbus.fshaperDbus.nConnections; i++ {
 		quicApplyControlDone = append(quicApplyControlDone, make(chan *dbus.Call, 1))
@@ -61,7 +61,7 @@ func (fshaperDbus fshaperDbusMethodInterface) ApplyControl(dType uint32, flow ui
 			var res bool
 			call.Store(&res)
 			if !res {
-				fshaperDbus.fshaperDbus.Log("failed to update flow at %v", time.Now().Sub(start))
+				fshaperDbus.fshaperDbus.Log("FShaper failed to update flow at %v", time.Now().Sub(start))
 				return false, nil
 			}
 		}
