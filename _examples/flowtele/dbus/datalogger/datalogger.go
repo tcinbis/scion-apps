@@ -118,6 +118,8 @@ func (d *DbusDataLogger) Run() {
 					d.writer.Flush()
 					check(d.writer.Error())
 				}
+			default:
+				time.Sleep(5 * time.Millisecond)
 			}
 		}
 		fmt.Println("### Exiting datalogger run function ###")

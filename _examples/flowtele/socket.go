@@ -27,6 +27,7 @@ import (
 	sd "github.com/scionproto/scion/go/lib/sciond"
 	"github.com/scionproto/scion/go/lib/snet"
 	"gopkg.in/alecthomas/kingpin.v2"
+	//_ "net/http/pprof"
 )
 
 const (
@@ -44,7 +45,6 @@ var (
 	localPortFlag      = kingpin.Flag("local-port", "Port number to listen on (required for SCION)").Default("51000").Int()
 	useLocalPortRange  = kingpin.Flag("local-port-range", "Use increasing local port numbers for additional QUIC senders").Default("true").Bool()
 	quicSenderOnly     = kingpin.Flag("quic-sender-only", "Only start the quic sender").Default("false").Bool()
-	fshaperOnly        = kingpin.Flag("fshaper-only", "Only start the fshaper").Default("false").Bool()
 	quicDbusIndex      = kingpin.Flag("quic-dbus-index", "index of the quic sender dbus name").Default("0").Int()
 	nConnections       = kingpin.Flag("num", "Number of QUIC connections").Default("2").Int()
 	noApplyControl     = kingpin.Flag("no-apply-control", "Do not forward apply-control calls from fshaper to this QUIC connection (useful to ensure the calibrator flow is not influenced by vAlloc)").Default("false").Bool()
@@ -144,6 +144,9 @@ func main() {
 	if *profiling {
 		p := profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook)
 		defer p.Stop()
+		//go func() {
+		//	fmt.Println(http.ListenAndServe(":6060", nil))
+		//}()
 	}
 	log.Info("Starting...")
 	if *quicSenderOnly || *mode == "quic" {
@@ -334,7 +337,7 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 		//dLogger.Send(&datalogger.RTTData{FlowID: connID, Timestamp: t, SRtt: srtt})
 		if qdbus.ShouldSendSignal(dbusSignal) {
 			if err := qdbus.Send(dbusSignal); err != nil {
-				fmt.Printf("srtt -> %d\n", qdbus.FlowId)
+				//fmt.Printf("srtt -> %d\n", qdbus.FlowId)
 				errChannel <- err
 			}
 		}
@@ -352,7 +355,7 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 		dbusSignal := flowteledbus.CreateQuicDbusSignalLost(connID, t, uint32(newSlowStartThreshold))
 		if qdbus.ShouldSendSignal(dbusSignal) {
 			if err := qdbus.Send(dbusSignal); err != nil {
-				fmt.Printf("lost -> %d\n", qdbus.FlowId)
+				//fmt.Printf("lost -> %d\n", qdbus.FlowId)
 				errChannel <- err
 			}
 		}
@@ -372,7 +375,7 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 
 	packetsLostRatio := func(t time.Time, lostRatio float64) {
 		//lostRatioDataLogger.Send(&datalogger.LostRatioData{FlowID: connID, Timestamp: t, LostRatio: lostRatio})
-		qdbus.Log("loss ratio: %f%%", lostRatio*100)
+		//qdbus.Log("loss ratio: %f%%", lostRatio*100)
 	}
 
 	//cwndDataLogger := datalogger.NewDbusDataLogger(
@@ -407,7 +410,7 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 		dbusSignal := flowteledbus.CreateQuicDbusSignalCwnd(connID, t, uint32(congestionWindow), int32(packetsInFlight), ackedBytesSum)
 		if qdbus.ShouldSendSignal(dbusSignal) {
 			if err := qdbus.Send(dbusSignal); err != nil {
-				fmt.Printf("ack -> %d\n", qdbus.FlowId)
+				//fmt.Printf("ack -> %d\n", qdbus.FlowId)
 				errChannel <- err
 			}
 			qdbus.ResetAcked()
@@ -454,7 +457,7 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 	log.Info(fmt.Sprintf("Starting DBUS"))
 	peerString := utils.CleanStringForFS(remoteAddr.String())
 	qdbus := flowteledbus.NewQuicDbus(flowId, applyControl, peerString)
-	qdbus.SetMinIntervalForAllSignals(5 * time.Millisecond)
+	qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
 
 	log.Info(fmt.Sprintf("Configuring QUIC"))
 	flowteleSignalInterface := flowtele.CreateFlowteleSignalInterface(nil, nil, nil, nil)
