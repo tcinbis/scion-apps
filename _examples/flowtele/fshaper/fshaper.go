@@ -8,6 +8,7 @@ import (
 	"github.com/scionproto/scion/go/lib/log"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"net"
+	"os"
 	"sync"
 )
 
@@ -16,6 +17,7 @@ const (
 )
 
 var (
+	exportIDs      = kingpin.Flag("export", "Searches for QUIC sockets and exports IDs to this file.").Default("").String()
 	remoteIpFlag   = kingpin.Flag("ip", "IP address to connect to").Default("127.0.0.1").String()
 	remotePortFlag = kingpin.Flag("port", "Port number to connect to").Default("51000").Int()
 	nConnections   = kingpin.Flag("num", "Number of QUIC connections").Default("2").Int()
@@ -44,6 +46,14 @@ func init() {
 func main() {
 	errChannel := make(chan error)
 	closeChannel := make(chan struct{})
+
+	if *exportIDs != "" {
+		err := dbusIDExport(*exportIDs)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(-1)
+		}
+	}
 
 	log.Info("Starting FShaper...\n")
 	go func(cc chan struct{}, ec chan error) {
