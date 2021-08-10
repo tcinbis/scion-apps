@@ -18,19 +18,19 @@ type ChannelDataStruct interface {
 }
 
 type RTTData struct {
-	FlowID    int
+	FlowID    string
 	Timestamp time.Time
 	SRtt      time.Duration
 }
 
 type CwndData struct {
-	FlowID    int
+	FlowID    string
 	Timestamp time.Time
 	Cwnd      uint64
 }
 
 type LostRatioData struct {
-	FlowID    int
+	FlowID    string
 	Timestamp time.Time
 	LostRatio float64
 }
@@ -125,15 +125,15 @@ func (d *DbusDataLogger) Run() {
 }
 
 func (r *RTTData) Strings() []string {
-	return []string{strconv.Itoa(r.FlowID), strconv.Itoa(int(UnixMicroseconds(r.Timestamp))), strconv.Itoa(int(r.SRtt.Microseconds()))}
+	return []string{r.FlowID, strconv.Itoa(int(UnixMicroseconds(r.Timestamp))), strconv.Itoa(int(r.SRtt.Microseconds()))}
 }
 
 func (c *CwndData) Strings() []string {
-	return []string{strconv.Itoa(c.FlowID), strconv.Itoa(int(UnixMicroseconds(c.Timestamp))), strconv.FormatUint(c.Cwnd, 10)}
+	return []string{c.FlowID, strconv.Itoa(int(UnixMicroseconds(c.Timestamp))), strconv.FormatUint(c.Cwnd, 10)}
 }
 
 func (c *LostRatioData) Strings() []string {
-	return []string{strconv.Itoa(c.FlowID), strconv.Itoa(int(UnixMicroseconds(c.Timestamp))), strconv.FormatFloat(c.LostRatio, 'f', 5, 64)}
+	return []string{c.FlowID, strconv.Itoa(int(UnixMicroseconds(c.Timestamp))), strconv.FormatFloat(c.LostRatio, 'f', 5, 64)}
 }
 
 func UnixMicroseconds(t time.Time) int64 {

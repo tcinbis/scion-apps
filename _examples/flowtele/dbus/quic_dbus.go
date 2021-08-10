@@ -67,6 +67,16 @@ func NewQuicDbus(flowId int32, applyControl bool, peer string) *QuicDbus {
 	return &d
 }
 
+func (qdb *QuicDbus) Reinit(flowId int32, applyControl bool, peer string) {
+	qdb.FlowId = flowId
+	qdb.peer = peer
+	qdb.applyControl = applyControl
+	qdb.ServiceName = getQuicServiceName(flowId, peer)
+	qdb.ObjectPath = getQuicObjectPath(flowId, peer)
+	qdb.InterfaceName = getQuicInterfaceName(flowId, peer)
+	qdb.LogPrefix = fmt.Sprintf("QUIC_%s", qdb.peer)
+}
+
 func (qdb *QuicDbus) LogRtt(t time.Time, rtt time.Duration) {
 	val, ok := qdb.lastLogTime[Rtt]
 	if !ok || t.Sub(val) > LOG_INTERVAL {
@@ -113,29 +123,29 @@ func (qdb *QuicDbus) LogAcked(t time.Time, congestionWindow uint64, packetsInFli
 }
 
 func (qdb *QuicDbus) SendRttSignal(t time.Time, rtt uint32) error {
-	return qdb.Send(CreateQuicDbusSignalRtt(qdb.FlowId, t, rtt))
+	return qdb.Send(CreateQuicDbusSignalRtt(qdb.peer, t, rtt))
 }
 
 func (qdb *QuicDbus) SendLostSignal(t time.Time, newSsthresh uint32) error {
-	return qdb.Send(CreateQuicDbusSignalLost(qdb.FlowId, t, newSsthresh))
+	return qdb.Send(CreateQuicDbusSignalLost(qdb.peer, t, newSsthresh))
 }
 
 func (qdb *QuicDbus) SendLostRatioSignal(t time.Time, ratio float64) error {
-	return qdb.Send(CreateQuicDbusSignalLostRatio(qdb.FlowId, t, ratio))
+	return qdb.Send(CreateQuicDbusSignalLostRatio(qdb.peer, t, ratio))
 }
 
 func (qdb *QuicDbus) SendCwndSignal(t time.Time, cwnd uint32, pktsInFlight int32, ackedBytes uint32) error {
-	return qdb.Send(CreateQuicDbusSignalCwnd(qdb.FlowId, t, cwnd, pktsInFlight, ackedBytes))
+	return qdb.Send(CreateQuicDbusSignalCwnd(qdb.peer, t, cwnd, pktsInFlight, ackedBytes))
 }
 
 func getQuicServiceName(flowId int32, peer string) string {
-	return fmt.Sprintf("%s_%s_%d", QUIC_SERVICE_NAME, peer, flowId)
+	return fmt.Sprintf("%s_%s", QUIC_SERVICE_NAME, peer)
 }
 
 func getQuicObjectPath(flowId int32, peer string) dbus.ObjectPath {
-	return dbus.ObjectPath(fmt.Sprintf("%s_%s_%d", QUIC_OBJECT_PATH, peer, flowId))
+	return dbus.ObjectPath(fmt.Sprintf("%s_%s", QUIC_OBJECT_PATH, peer))
 }
 
 func getQuicInterfaceName(flowId int32, peer string) string {
-	return fmt.Sprintf("%s_%s_%d", QUIC_INTERFACE_NAME, peer, flowId)
+	return fmt.Sprintf("%s_%s", QUIC_INTERFACE_NAME, peer)
 }

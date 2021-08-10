@@ -70,6 +70,61 @@ func (fshaperDbus fshaperDbusMethodInterface) ApplyControl(dType uint32, flow ui
 	return true, nil
 }
 
+// ApplyControlV2 expects the connection IDs used by QUIC when the QUIC session was initialized as an string array and the corresponding flow values as a uint64 array
+// connIDs are used to identify the correct dbus interfaces
+func (fshaperDbus fshaperDbusMethodInterface) ApplyControlV2(dType uint32, flow uint32, connIDs []string, flows []uint64) (ret bool, dbusError *dbus.Error) {
+	// apply CC params to QUIC connections
+	// fshaperDbusMethodInterface.dbusBase.Send(...)
+	start := time.Now()
+	fshaperDbus.fshaperDbus.Log("FShaper received ApplyControlV2(%d, %d, %+v, %+v)", dType, flow, connIDs, flows)
+	var quicApplyControlDone []chan *dbus.Call
+	for i := 0; i < fshaperDbus.fshaperDbus.nConnections; i++ {
+		quicApplyControlDone = append(quicApplyControlDone, make(chan *dbus.Call, 1))
+	}
+	for i, f := range flows {
+		if i >= fshaperDbus.fshaperDbus.nConnections {
+			break
+		}
+		// TODO: Fix second parameter
+		serviceName := getQuicServiceName(int32(i), connIDs[i])
+		objectPath := getQuicObjectPath(int32(i), connIDs[i])
+		interfaceName := getQuicInterfaceName(int32(i), connIDs[i])
+		obj := fshaperDbus.fshaperDbus.Conn.Object(serviceName, objectPath)
+		fshaperDbus.fshaperDbus.Log("calling ApplyControl on %s in %s at %v", serviceName, objectPath, time.Now().Sub(start))
+
+		var beta float64
+		var cwnd_adjust, cwnd_max_adjust int64
+		var use_conservative_allocation bool
+		beta = float64(int((f>>48)&0xffff)) / 1024
+		cwnd_adjust = int64(int16((f >> 32) & 0xffff))
+		cwnd_max_adjust = int64(int16((f >> 16) & 0xffff))
+		use_conservative_allocation = bool((f & 0x1) == 1)
+
+		// scale up cwnd increase by 2<<10
+		cwnd_adjust = int64(float32(cwnd_adjust) * float32(2<<10))
+		cwnd_max_adjust = int64(float32(cwnd_max_adjust) * float32(2<<10))
+		// call := obj.Call(interfaceName+".ApplyControl", 0, dType, beta, cwnd_adjust, cwnd_max_adjust, use_conservative_allocation)
+		obj.Go(interfaceName+".ApplyControl", 0, quicApplyControlDone[i], dType, beta, cwnd_adjust, cwnd_max_adjust, use_conservative_allocation)
+	}
+	for _, c := range quicApplyControlDone {
+		select {
+		case call := <-c:
+			if call.Err != nil {
+				panic(call.Err)
+			}
+			//fshaperDbus.fshaperDbus.Log("dbus call finished for flow %d finished at %v", i, time.Now().Sub(start))
+			var res bool
+			call.Store(&res)
+			if !res {
+				fshaperDbus.fshaperDbus.Log("FShaper failed to update flow at %v", time.Now().Sub(start))
+				return false, nil
+			}
+		}
+	}
+	fshaperDbus.fshaperDbus.Log("successfully updated flows after %v", time.Now().Sub(start))
+	return true, nil
+}
+
 type FshaperDbus struct {
 	DbusBase
 	nConnections int

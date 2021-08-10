@@ -319,6 +319,104 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 	}
 }
 
+func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- error, connID string) *flowtele.FlowTeleSignal {
+	// signal forwarding functions
+	newSrttMeasurement := func(t time.Time, srtt time.Duration) {
+		if qdbus.Conn == nil {
+			// ignore signals if the session bus is not connected
+			return
+		}
+
+		if srtt > math.MaxUint32 {
+			panic("srtt does not fit in uint32")
+		}
+		dbusSignal := flowteledbus.CreateQuicDbusSignalRtt(connID, t, uint32(srtt.Microseconds()))
+		//dLogger.Send(&datalogger.RTTData{FlowID: connID, Timestamp: t, SRtt: srtt})
+		if qdbus.ShouldSendSignal(dbusSignal) {
+			if err := qdbus.Send(dbusSignal); err != nil {
+				fmt.Printf("srtt -> %d\n", qdbus.FlowId)
+				errChannel <- err
+			}
+		}
+	}
+
+	packetsLost := func(t time.Time, newSlowStartThreshold uint64) {
+		if qdbus.Conn == nil {
+			// ignore signals if the session bus is not connected
+			return
+		}
+
+		if newSlowStartThreshold > math.MaxUint32 {
+			panic("newSlotStartThreshold does not fit in uint32")
+		}
+		dbusSignal := flowteledbus.CreateQuicDbusSignalLost(connID, t, uint32(newSlowStartThreshold))
+		if qdbus.ShouldSendSignal(dbusSignal) {
+			if err := qdbus.Send(dbusSignal); err != nil {
+				fmt.Printf("lost -> %d\n", qdbus.FlowId)
+				errChannel <- err
+			}
+		}
+	}
+
+	//lostRatioDataLogger := datalogger.NewDbusDataLogger(
+	//	fmt.Sprintf(
+	//		"lostRatios-%d-%s-f%d.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), flowId,
+	//	),
+	//	[]string{"flowID", "microTimestamp", "lostRatio"},
+	//	metadataHeader,
+	//	&loggerWait,
+	//)
+	//defer lostRatioDataLogger.Close()
+	//lostRatioDataLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
+	//lostRatioDataLogger.Run()
+
+	packetsLostRatio := func(t time.Time, lostRatio float64) {
+		//lostRatioDataLogger.Send(&datalogger.LostRatioData{FlowID: connID, Timestamp: t, LostRatio: lostRatio})
+		qdbus.Log("loss ratio: %f%%", lostRatio*100)
+	}
+
+	//cwndDataLogger := datalogger.NewDbusDataLogger(
+	//	fmt.Sprintf(
+	//		"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+	//	),
+	//	[]string{"flowID", "microTimestamp", "cwnd"},
+	//	metadataHeader,
+	//	&loggerWait,
+	//)
+	//defer cwndDataLogger.Close()
+	//cwndDataLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
+	//cwndDataLogger.Run()
+
+	packetsAcked := func(t time.Time, congestionWindow uint64, packetsInFlight uint64, ackedBytes uint64) {
+		if qdbus.Conn == nil {
+			// ignore signals if the session bus is not connected
+			return
+		}
+
+		if congestionWindow > math.MaxUint32 {
+			panic("congestionWindow does not fit in uint32")
+		}
+		if packetsInFlight > math.MaxInt32 {
+			panic("packetsInFlight does not fit in int32")
+		}
+		if ackedBytes > math.MaxUint32 {
+			panic("ackedBytes does not fit in uint32")
+		}
+		ackedBytesSum := qdbus.Acked(uint32(ackedBytes))
+		//cwndDataLogger.Send(&datalogger.CwndData{FlowID: connID, Timestamp: t, Cwnd: congestionWindow})
+		dbusSignal := flowteledbus.CreateQuicDbusSignalCwnd(connID, t, uint32(congestionWindow), int32(packetsInFlight), ackedBytesSum)
+		if qdbus.ShouldSendSignal(dbusSignal) {
+			if err := qdbus.Send(dbusSignal); err != nil {
+				fmt.Printf("ack -> %d\n", qdbus.FlowId)
+				errChannel <- err
+			}
+			qdbus.ResetAcked()
+		}
+	}
+
+	return flowtele.CreateFlowteleSignalInterface(newSrttMeasurement, packetsLost, packetsLostRatio, packetsAcked)
+}
+
 func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int32, applyControl bool, errChannel chan error) error {
 	// capture interrupts to gracefully terminate run
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -357,110 +455,9 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 	peerString := utils.CleanStringForFS(remoteAddr.String())
 	qdbus := flowteledbus.NewQuicDbus(flowId, applyControl, peerString)
 	qdbus.SetMinIntervalForAllSignals(5 * time.Millisecond)
-	if err := qdbus.OpenSessionBus(); err != nil {
-		return err
-	}
-	defer qdbus.Close()
 
-	if err := qdbus.Register(); err != nil {
-		return err
-	}
-
-	// signal forwarding functions
-	newSrttMeasurement := func(t time.Time, srtt time.Duration) {
-		if qdbus.Conn == nil {
-			// ignore signals if the session bus is not connected
-			return
-		}
-
-		if srtt > math.MaxUint32 {
-			panic("srtt does not fit in uint32")
-		}
-		dbusSignal := flowteledbus.CreateQuicDbusSignalRtt(flowId, t, uint32(srtt.Microseconds()))
-		dLogger.Send(&datalogger.RTTData{FlowID: int(flowId), Timestamp: t, SRtt: srtt})
-		if qdbus.ShouldSendSignal(dbusSignal) {
-			if err := qdbus.Send(dbusSignal); err != nil {
-				fmt.Printf("srtt -> %d\n", qdbus.FlowId)
-				errChannel <- err
-			}
-		}
-	}
-
-	packetsLost := func(t time.Time, newSlowStartThreshold uint64) {
-		if qdbus.Conn == nil {
-			// ignore signals if the session bus is not connected
-			return
-		}
-
-		if newSlowStartThreshold > math.MaxUint32 {
-			panic("newSlotStartThreshold does not fit in uint32")
-		}
-		dbusSignal := flowteledbus.CreateQuicDbusSignalLost(flowId, t, uint32(newSlowStartThreshold))
-		if qdbus.ShouldSendSignal(dbusSignal) {
-			if err := qdbus.Send(dbusSignal); err != nil {
-				fmt.Printf("lost -> %d\n", qdbus.FlowId)
-				errChannel <- err
-			}
-		}
-	}
-
-	lostRatioDataLogger := datalogger.NewDbusDataLogger(
-		fmt.Sprintf(
-			"lostRatios-%d-%s-f%d.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), flowId,
-		),
-		[]string{"flowID", "microTimestamp", "lostRatio"},
-		metadataHeader,
-		&loggerWait,
-	)
-	defer lostRatioDataLogger.Close()
-	lostRatioDataLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
-	lostRatioDataLogger.Run()
-
-	packetsLostRatio := func(t time.Time, lostRatio float64) {
-		lostRatioDataLogger.Send(&datalogger.LostRatioData{FlowID: int(flowId), Timestamp: t, LostRatio: lostRatio})
-		qdbus.Log("loss ratio: %f%%", lostRatio*100)
-	}
-
-	cwndDataLogger := datalogger.NewDbusDataLogger(
-		fmt.Sprintf(
-			"cwnd-samples-%d-%s-f%d.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), flowId,
-		),
-		[]string{"flowID", "microTimestamp", "cwnd"},
-		metadataHeader,
-		&loggerWait,
-	)
-	defer cwndDataLogger.Close()
-	cwndDataLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
-	cwndDataLogger.Run()
-
-	packetsAcked := func(t time.Time, congestionWindow uint64, packetsInFlight uint64, ackedBytes uint64) {
-		if qdbus.Conn == nil {
-			// ignore signals if the session bus is not connected
-			return
-		}
-
-		if congestionWindow > math.MaxUint32 {
-			panic("congestionWindow does not fit in uint32")
-		}
-		if packetsInFlight > math.MaxInt32 {
-			panic("packetsInFlight does not fit in int32")
-		}
-		if ackedBytes > math.MaxUint32 {
-			panic("ackedBytes does not fit in uint32")
-		}
-		ackedBytesSum := qdbus.Acked(uint32(ackedBytes))
-		cwndDataLogger.Send(&datalogger.CwndData{FlowID: int(flowId), Timestamp: t, Cwnd: congestionWindow})
-		dbusSignal := flowteledbus.CreateQuicDbusSignalCwnd(flowId, t, uint32(congestionWindow), int32(packetsInFlight), ackedBytesSum)
-		if qdbus.ShouldSendSignal(dbusSignal) {
-			if err := qdbus.Send(dbusSignal); err != nil {
-				fmt.Printf("ack -> %d\n", qdbus.FlowId)
-				errChannel <- err
-			}
-			qdbus.ResetAcked()
-		}
-	}
 	log.Info(fmt.Sprintf("Configuring QUIC"))
-	flowteleSignalInterface := flowtele.CreateFlowteleSignalInterface(newSrttMeasurement, packetsLost, packetsLostRatio, packetsAcked)
+	flowteleSignalInterface := flowtele.CreateFlowteleSignalInterface(nil, nil, nil, nil)
 	//tracer := qlog.NewTracer(func(_ logging.Perspective, connID []byte) io.WriteCloser {
 	//	filename := fmt.Sprintf("client_%x.qlog", connID)
 	//	f, err := os.Create(filename)
@@ -498,6 +495,22 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 		// session.Close()
 		qdbus.Session = nil
 	}()
+
+	connID := session.ConnectionID().String()
+	qdbus.Reinit(0, applyControl, connID)
+	if err := qdbus.OpenSessionBus(); err != nil {
+		return err
+	}
+	defer qdbus.Close()
+	if err := qdbus.Register(); err != nil {
+		return err
+	}
+
+	// we initialized quic with a pointer to a dummy FlowTeleSignalInterface.
+	// now that we know the true connectionID we point the pointer to a real interface
+	// TODO: Enable data loggers again!
+	*(flowteleSignalInterface) = *getFlowTeleSignalInterface(qdbus, errChannel, connID)
+
 	log.Info(fmt.Sprintf("Session established."))
 	qdbus.Session = checkFlowTeleSession(session)
 	// open stream

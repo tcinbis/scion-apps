@@ -107,6 +107,22 @@ func createReportDbusSignalUint32Uint32(t QuicDbusSignalType, flow int32, time t
 	}}
 }
 
+func createReportDbusSignalStringIDUint32Uint32(t QuicDbusSignalType, flow string, time time.Time, v0 uint32, v1 uint32) DbusSignal {
+	return &dbusSignalStruct{t, struct {
+		Flow   string
+		TvSec  uint64
+		TvNsec uint32
+		V0     uint32
+		V1     uint32
+	}{
+		string(flow),
+		uint64(time.Unix()),
+		uint32(time.Nanosecond()),
+		v0,
+		v1,
+	}}
+}
+
 func createReportDbusSignalUint32Int32(t QuicDbusSignalType, flow int32, time time.Time, v0 uint32, v1 int32) DbusSignal {
 	return &dbusSignalStruct{t, struct {
 		Flow   int32
@@ -141,6 +157,24 @@ func createReportDbusSignalUint32Int32Uint32(t QuicDbusSignalType, flow int32, t
 	}}
 }
 
+func createReportDbusSignalStringIDUint32Int32Uint32(t QuicDbusSignalType, flow string, time time.Time, v0 uint32, v1 int32, v2 uint32) DbusSignal {
+	return &dbusSignalStruct{t, struct {
+		Flow   string
+		TvSec  uint64
+		TvNsec uint32
+		V0     uint32
+		V1     int32
+		V2     uint32
+	}{
+		string(flow),
+		uint64(time.Unix()),
+		uint32(time.Nanosecond()),
+		v0,
+		v1,
+		v2,
+	}}
+}
+
 func createReportDbusSignalFloat64(t QuicDbusSignalType, flow int32, time time.Time, v0 float64) DbusSignal {
 	return &dbusSignalStruct{t, struct {
 		Flow   int32
@@ -149,6 +183,34 @@ func createReportDbusSignalFloat64(t QuicDbusSignalType, flow int32, time time.T
 		V0     float64
 	}{
 		int32(flow),
+		uint64(time.Unix()),
+		uint32(time.Nanosecond()),
+		v0,
+	}}
+}
+
+func createReportDbusSignalStringIDFloat64(t QuicDbusSignalType, flow string, time time.Time, v0 float64) DbusSignal {
+	return &dbusSignalStruct{t, struct {
+		Flow   string
+		TvSec  uint64
+		TvNsec uint32
+		V0     float64
+	}{
+		string(flow),
+		uint64(time.Unix()),
+		uint32(time.Nanosecond()),
+		v0,
+	}}
+}
+
+func createReportDbusSignalStringIDUint32(t QuicDbusSignalType, flow string, time time.Time, v0 uint32) DbusSignal {
+	return &dbusSignalStruct{t, struct {
+		Flow   string
+		TvSec  uint64
+		TvNsec uint32
+		V0     uint32
+	}{
+		string(flow),
 		uint64(time.Unix()),
 		uint32(time.Nanosecond()),
 		v0,
