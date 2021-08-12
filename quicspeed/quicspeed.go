@@ -20,7 +20,10 @@ import (
 )
 
 const (
-	BIT      = 1
+	BIT     = 1
+	KILOBIT = 1000 * BIT
+	MEGABIT = 1000 * KILOBIT
+
 	BYTE     = 8 * BIT
 	KILOBYTE = 1000 * BYTE
 	MEGABYTE = 1000 * KILOBYTE
@@ -88,9 +91,9 @@ func receive(stream quic.Stream, payloadSize int) {
 		}
 		receivedCount += count
 		tCur := tEnd.Sub(tStart).Seconds()
-		curRate := float64(count*BYTE) / tCur / MEGABYTE
+		curRate := float64(count*BYTE) / tCur / MEGABIT
 
-		fmt.Printf("cur: %.1fMByte/s %.2fs\n", curRate, tCur)
+		fmt.Printf("cur: %.1fMBit/s %.2fs\n", curRate, tCur)
 	}
 }
 
