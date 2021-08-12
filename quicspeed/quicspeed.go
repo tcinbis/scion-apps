@@ -136,8 +136,8 @@ func runClient(address string, payloadSize int, interactive bool) error {
 		}
 	}()
 
-	//send(stream, payloadSize)
-	receive(stream, payloadSize)
+	send(stream, payloadSize)
+	//receive(stream, payloadSize)
 	return nil
 }
 
@@ -169,7 +169,7 @@ func runServer(port, payloadSize int, usePan bool) error {
 		return fmt.Errorf("Error accepting streams: %s\n", err)
 	}
 
-	send(stream, payloadSize)
-	//receive(stream, payloadSize)
+	//send(stream, payloadSize)
+	receive(stream, payloadSize)
 	return nil
 }
