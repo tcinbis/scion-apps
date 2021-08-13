@@ -31,6 +31,7 @@ const (
 
 func main() {
 	port := flag.Uint("port", 0, "[Server] Local port to listen on")
+	local := flag.String("local", "", "[Server] If specified defines the local address to listen on.")
 	payload := flag.Uint("payload", 10000000, "[Client] Size of each burst in bytes")
 	interactive := flag.Bool("interactive", false, "[Client] Select the path interactively")
 	usePan := flag.Bool("pan", false, "[Server] Whether to use PAN instead of appquic.")
@@ -44,7 +45,7 @@ func main() {
 
 	var err error
 	if *port > 0 {
-		err = runServer(int(*port), int(*payload), *usePan)
+		err = runServer(*local, int(*port), int(*payload), *usePan)
 	} else {
 		err = runClient(*remoteAddr, int(*payload), *interactive)
 	}
@@ -141,7 +142,7 @@ func runClient(address string, payloadSize int, interactive bool) error {
 	return nil
 }
 
-func runServer(port, payloadSize int, usePan bool) error {
+func runServer(localAddr string, port, payloadSize int, usePan bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var listener quic.Listener
@@ -149,6 +150,12 @@ func runServer(port, payloadSize int, usePan bool) error {
 	if usePan {
 		listener, err = pan.ListenQUIC(ctx, &net.UDPAddr{Port: port}, nil, &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
 		fmt.Printf("%v\n", listener.Addr())
+	} else if localAddr != "" {
+		listener, err = appquic.Listen(&net.UDPAddr{
+			IP:   net.ParseIP(localAddr),
+			Port: port,
+		}, &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+		fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr())
 	} else {
 		listener, err = appquic.ListenPort(uint16(port), &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
 		fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr())
