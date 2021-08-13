@@ -118,7 +118,7 @@ func runClient(address string, payloadSize int, interactive bool) error {
 		path = paths[0]
 	}
 
-	sess, err := appquic.Dial(address, &tls.Config{NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+	sess, err := appquic.DialAddr(addr, "", &tls.Config{NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
 	if err != nil {
 		return err
 	}
