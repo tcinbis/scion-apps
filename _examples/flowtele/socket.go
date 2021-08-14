@@ -100,9 +100,6 @@ func init() {
 			// systemd-escape weirdly escapes a - so we have to fix it here
 			*target = strings.ReplaceAll(*target, "/", "-")
 		}
-		log.Info(*target)
-		x := strings.Split(*target, ",")
-		log.Debug(fmt.Sprintf("target split into: %v\n", x))
 		if *useScion {
 			rAddr, err := appnet.ResolveUDPAddr(*target)
 			if err != nil {
@@ -116,6 +113,8 @@ func init() {
 			*remoteIpFlag = rAddr.Host.IP.String()
 			*remotePortFlag = rAddr.Host.Port
 		} else {
+			x := strings.Split(*target, ",")
+			log.Debug(fmt.Sprintf("target split into: %v\n", x))
 			// only parse IP from target
 			if len(x) == 1 {
 				*remoteIpFlag = x[0]
