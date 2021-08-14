@@ -41,7 +41,7 @@ var (
 	remoteIpFlag       = kingpin.Flag("ip", "IP address to connect to").Default("127.0.0.1").String()
 	remotePortFlag     = kingpin.Flag("port", "Port number to connect to").Default("51000").Int()
 	useRemotePortRange = kingpin.Flag("port-range", "Use increasing (remote) port numbers for additional QUIC senders").Default("false").Bool()
-	localIpFlag        = kingpin.Flag("local-ip", "IP address to listen on (required for SCION)").Default("").String()
+	localIpFlag        = kingpin.Flag("local-ip", "IP address to listen on (required for SCION)").Default("127.0.0.1").String()
 	localPortFlag      = kingpin.Flag("local-port", "Port number to listen on (required for SCION)").Default("51000").Int()
 	useLocalPortRange  = kingpin.Flag("local-port-range", "Use increasing local port numbers for additional QUIC senders").Default("true").Bool()
 	quicSenderOnly     = kingpin.Flag("quic-sender-only", "Only start the quic sender").Default("false").Bool()
@@ -181,7 +181,7 @@ func main() {
 
 func invokePathFetching(closeChannel chan struct{}, errChannel chan error) {
 	sciondAddr := *sciondAddrFlag
-	paths, err := fetchPaths(sciondAddr, localIAFromFlag, remoteIAFromFlag)
+	paths, err := fetchPaths(sciondAddr, remoteIAFromFlag)
 	if err != nil {
 		errChannel <- err
 	} else {
@@ -233,26 +233,22 @@ func invokeQuicSenders(closeChannel chan struct{}, errChannel chan error) {
 	}()
 }
 
-func fetchPaths(sciondAddr string, localIA addr.IA, remoteIA addr.IA) ([]snet.Path, error) {
+func fetchPaths(sciondAddr string, remoteIA addr.IA) ([]snet.Path, error) {
 	sdConn, err := utils.GetSciondService(sciondAddr).Connect(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("Unable to initialize SCION network: %s", err)
 	}
-	localIA, err = utils.CheckLocalIA(sciondAddr, localIA)
-	if err != nil {
-		log.Error(fmt.Sprintf("Error fetching localIA from SCIOND: %v\n", err))
-	}
 
-	log.Debug(fmt.Sprintf("Remote: %v Local: %v\n", remoteIA, localIA))
-	paths, err := sdConn.Paths(context.Background(), remoteIA, localIA, sd.PathReqFlags{})
+	log.Debug(fmt.Sprintf("Remote: %v Local: %v\n", remoteIA, localIAFromFlag))
+	paths, err := sdConn.Paths(context.Background(), remoteIA, localIAFromFlag, sd.PathReqFlags{})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to lookup paths: %s", err)
 	}
 	return paths, nil
 }
 
-func fetchPath(pathDescription *utils.ScionPathDescription, sciondAddr string, localIA addr.IA, remoteIA addr.IA) (snet.Path, error) {
-	paths, err := fetchPaths(sciondAddr, localIA, remoteIA)
+func fetchPath(pathDescription *utils.ScionPathDescription, sciondAddr string, remoteIA addr.IA) (snet.Path, error) {
+	paths, err := fetchPaths(sciondAddr, remoteIA)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +277,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 			pathDescription = pathDescriptions[*scionPathsIndex]
 		} else {
 			log.Info("Did not specify --path or --paths-file and --paths-index! Choosing dynamically...")
-			paths, err := fetchPaths(*sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)
+			paths, err := fetchPaths(*sciondAddrFlag, remoteIAFromFlag)
 			if err != nil || len(paths) < 1 {
 				return nil, fmt.Errorf("error fetching paths dynamically")
 			}
@@ -294,7 +290,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 		remoteScionAddr.Host = remoteAddr
 		remoteScionAddr.IA = remoteIAFromFlag
 		if !remoteIAFromFlag.Equal(localIAFromFlag) {
-			path, err := fetchPath(pathDescription, *sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)
+			path, err := fetchPath(pathDescription, *sciondAddrFlag, remoteIAFromFlag)
 			if err != nil {
 				return nil, err
 			}
