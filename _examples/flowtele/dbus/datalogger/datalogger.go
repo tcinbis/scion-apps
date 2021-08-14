@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
+	"github.com/scionproto/scion/go/lib/addr"
+	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -148,4 +152,63 @@ func check(err error) {
 		fmt.Printf("Error in dbus datalogger: %v\n", err)
 		panic(err)
 	}
+}
+
+func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, waitGroup *sync.WaitGroup, localIA, remoteIA addr.IA, localAddr, remoteAddr *net.UDPAddr, connID string) (*DbusDataLogger, *DbusDataLogger, *DbusDataLogger) {
+	log.Info(fmt.Sprintf("Configuring data logger now..."))
+	var metadataHeader []string
+	if useScion {
+		metadataHeader = []string{"localIA", "remoteIA", "src", "dest"}
+	} else {
+		metadataHeader = []string{"src", "dest"}
+	}
+
+	srttLogger := NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf(
+			"%s-samples-%d-%s-f%s.csv", csvPrefix, time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+		),
+		[]string{"flowID", "microTimestamp", "microSRTT"},
+		metadataHeader,
+		waitGroup,
+	)
+
+	lostLogger := NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf(
+			"lostRatios-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+		),
+		[]string{"flowID", "microTimestamp", "lostRatio"},
+		metadataHeader,
+		waitGroup,
+	)
+
+	cwndLogger := NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf(
+			"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+		),
+		[]string{"flowID", "microTimestamp", "cwnd"},
+		metadataHeader,
+		waitGroup,
+	)
+
+	var meta []string
+	if useScion {
+		meta = append([]string{localIA.String(), remoteIA.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+	} else {
+		meta = append([]string{localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+	}
+
+	srttLogger.SetMetadata(meta)
+	lostLogger.SetMetadata(meta)
+	cwndLogger.SetMetadata(meta)
+
+	srttLogger.Run()
+	lostLogger.Run()
+	cwndLogger.Run()
+
+	log.Info(fmt.Sprintf("Data logger complete"))
+
+	return srttLogger, lostLogger, cwndLogger
 }

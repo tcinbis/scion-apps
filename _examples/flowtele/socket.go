@@ -151,9 +151,6 @@ func main() {
 	if *profiling {
 		p := profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook)
 		defer p.Stop()
-		//go func() {
-		//	fmt.Println(http.ListenAndServe(":6060", nil))
-		//}()
 	}
 	log.Info("Starting...")
 	if *quicSenderOnly || *mode == "quic" {
@@ -184,7 +181,7 @@ func main() {
 
 func invokePathFetching(closeChannel chan struct{}, errChannel chan error) {
 	sciondAddr := *sciondAddrFlag
-	paths, err := fetchPaths(sciondAddr, remoteIAFromFlag)
+	paths, err := utils.FetchPaths(sciondAddr, localIAFromFlag, remoteIAFromFlag)
 	if err != nil {
 		errChannel <- err
 	} else {
@@ -236,33 +233,6 @@ func invokeQuicSenders(closeChannel chan struct{}, errChannel chan error) {
 	}()
 }
 
-func fetchPaths(sciondAddr string, remoteIA addr.IA) ([]snet.Path, error) {
-	sdConn, err := utils.GetSciondService(sciondAddr).Connect(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("Unable to initialize SCION network: %s", err)
-	}
-
-	log.Debug(fmt.Sprintf("Remote: %v Local: %v\n", remoteIA, localIAFromFlag))
-	paths, err := sdConn.Paths(context.Background(), remoteIA, localIAFromFlag, sd.PathReqFlags{})
-	if err != nil {
-		return nil, fmt.Errorf("Failed to lookup paths: %s", err)
-	}
-	return paths, nil
-}
-
-func fetchPath(pathDescription *utils.ScionPathDescription, sciondAddr string, remoteIA addr.IA) (snet.Path, error) {
-	paths, err := fetchPaths(sciondAddr, remoteIA)
-	if err != nil {
-		return nil, err
-	}
-	for _, path := range paths {
-		if pathDescription.IsEqual(utils.NewScionPathDescription(path)) {
-			return path, nil
-		}
-	}
-	return nil, fmt.Errorf("No matching path (%v) was found in %v", pathDescription, paths)
-}
-
 func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Session, error) {
 	if *useScion {
 		log.Debug("Using scion for QUIC session.")
@@ -280,7 +250,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 			pathDescription = pathDescriptions[*scionPathsIndex]
 		} else {
 			log.Info("Did not specify --path or --paths-file and --paths-index! Choosing dynamically...")
-			paths, err := fetchPaths(*sciondAddrFlag, remoteIAFromFlag)
+			paths, err := utils.FetchPaths(*sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)
 			if err != nil || len(paths) < 1 {
 				return nil, fmt.Errorf("error fetching paths dynamically")
 			}
@@ -293,7 +263,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 		remoteScionAddr.Host = remoteAddr
 		remoteScionAddr.IA = remoteIAFromFlag
 		if !remoteIAFromFlag.Equal(localIAFromFlag) {
-			path, err := fetchPath(pathDescription, *sciondAddrFlag, remoteIAFromFlag)
+			path, err := utils.FetchPath(pathDescription, *sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)
 			if err != nil {
 				return nil, err
 			}
@@ -317,72 +287,19 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 	}
 }
 
-func createDataLoggers(ctx context.Context, localAddr, remoteAddr *net.UDPAddr, connID string) (*datalogger.DbusDataLogger, *datalogger.DbusDataLogger, *datalogger.DbusDataLogger) {
-	log.Info(fmt.Sprintf("Configuring data logger now..."))
-	var metadataHeader []string
-	if *useScion {
-		metadataHeader = []string{"localIA", "remoteIA", "src", "dest"}
-	} else {
-		metadataHeader = []string{"src", "dest"}
-	}
-
-	srttLogger := datalogger.NewDbusDataLogger(
-		ctx,
-		fmt.Sprintf(
-			"%s-samples-%d-%s-f%s.csv", *csvFilePrefix, time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
-		),
-		[]string{"flowID", "microTimestamp", "microSRTT"},
-		metadataHeader,
-		&loggerWait,
-	)
-
-	lostLogger := datalogger.NewDbusDataLogger(
-		ctx,
-		fmt.Sprintf(
-			"lostRatios-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
-		),
-		[]string{"flowID", "microTimestamp", "lostRatio"},
-		metadataHeader,
-		&loggerWait,
-	)
-
-	cwndLogger := datalogger.NewDbusDataLogger(
-		ctx,
-		fmt.Sprintf(
-			"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
-		),
-		[]string{"flowID", "microTimestamp", "cwnd"},
-		metadataHeader,
-		&loggerWait,
-	)
-
-	var meta []string
-	if *useScion {
-		localIA, err := utils.CheckLocalIA(*sciondAddrFlag, addr.IA{})
-		if err != nil {
-			log.Error(fmt.Sprintf("Error receiving localIA: %v\n", err))
-		}
-		meta = append([]string{localIA.String(), remoteIAFromFlag.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
-	} else {
-		meta = append([]string{localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
-	}
-
-	srttLogger.SetMetadata(meta)
-	lostLogger.SetMetadata(meta)
-	cwndLogger.SetMetadata(meta)
-
-	srttLogger.Run()
-	lostLogger.Run()
-	cwndLogger.Run()
-
-	log.Info(fmt.Sprintf("Data logger complete"))
-
-	return srttLogger, lostLogger, cwndLogger
-}
-
 func getFlowTeleSignalInterface(loggerCtx context.Context, qdbus *flowteledbus.QuicDbus, errChannel chan<- error, connID string, localAddr, remoteAddr *net.UDPAddr) *flowtele.FlowTeleSignal {
 	// signal forwarding functions
-	srttLogger, lostLogger, cwndLogger := createDataLoggers(loggerCtx, localAddr, remoteAddr, connID)
+	srttLogger, lostLogger, cwndLogger := datalogger.CreateDataLoggers(
+		loggerCtx,
+		*useScion,
+		*csvFilePrefix,
+		&loggerWait,
+		localIAFromFlag,
+		remoteIAFromFlag,
+		localAddr,
+		remoteAddr,
+		connID,
+	)
 
 	newSrttMeasurement := func(t time.Time, srtt time.Duration) {
 		if qdbus.Conn == nil {

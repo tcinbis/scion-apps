@@ -2,7 +2,9 @@ package utils
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	sd "github.com/scionproto/scion/go/lib/sciond"
 	"os"
 	"regexp"
 	"strings"
@@ -133,4 +135,30 @@ func ReadPaths(pathsFile string) ([]*ScionPathDescription, error) {
 		return nil, err
 	}
 	return spds, nil
+}
+
+func FetchPaths(sciondAddr string, localIA, remoteIA addr.IA) ([]snet.Path, error) {
+	sdConn, err := GetSciondService(sciondAddr).Connect(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("Unable to initialize SCION network: %s", err)
+	}
+
+	paths, err := sdConn.Paths(context.Background(), remoteIA, localIA, sd.PathReqFlags{})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to lookup paths: %s", err)
+	}
+	return paths, nil
+}
+
+func FetchPath(pathDescription *ScionPathDescription, sciondAddr string, localIA, remoteIA addr.IA) (snet.Path, error) {
+	paths, err := FetchPaths(sciondAddr, localIA, remoteIA)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range paths {
+		if pathDescription.IsEqual(NewScionPathDescription(path)) {
+			return path, nil
+		}
+	}
+	return nil, fmt.Errorf("No matching path (%v) was found in %v", pathDescription, paths)
 }
