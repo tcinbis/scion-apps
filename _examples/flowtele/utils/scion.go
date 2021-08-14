@@ -89,6 +89,7 @@ func GetScionQuicSession(dispatcher string, sciondAddr string, localAddr *net.UD
 	network := snet.NewNetwork(localIA, reliable.NewDispatcher(dispatcher), sd.RevHandler{Connector: sciondConn})
 
 	// start QUIC session
-	log.Debug(fmt.Sprintf("GetScionQuicSession: %s -- %s\n", localAddr.String(), remoteScionAddr.String()))
+	log.Debug(fmt.Sprintf("Local: %s -- Remote: %s\n", localAddr.String(), remoteScionAddr.String()))
+	log.Debug(fmt.Sprintf("Using path: %s", remoteScionAddr.Path.String()))
 	return squic.Dial(network, localAddr, &remoteScionAddr, addr.SvcNone, quicConfig)
 }

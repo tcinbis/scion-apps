@@ -267,8 +267,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 			if err != nil {
 				return nil, err
 			}
-			remoteScionAddr.Path = path.Path()
-			remoteScionAddr.NextHop = path.UnderlayNextHop()
+			appnet.SetPath(&remoteScionAddr, path)
 		}
 		return utils.GetScionQuicSession(*dispatcherFlag, *sciondAddrFlag, localAddr, remoteScionAddr, localIAFromFlag, quicConfig)
 	} else {
