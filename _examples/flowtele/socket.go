@@ -87,11 +87,12 @@ const (
 func init() {
 	utils.SetupLogger()
 	kingpin.Parse()
-	localIAFromFlag, err := utils.CheckLocalIA(*sciondAddrFlag, *utils.SetAddrIA(*localIAFlag))
+	localIA, err := utils.CheckLocalIA(*sciondAddrFlag, *utils.SetAddrIA(*localIAFlag))
 	if err != nil {
 		log.Error(fmt.Sprintf("Error fetching localIA from SCIOND: %v\n", err))
 		os.Exit(-1)
 	}
+	localIAFromFlag = localIA
 	log.Debug(fmt.Sprintf("LocalIA %v\n", localIAFromFlag))
 
 	if len(*target) > 0 {
