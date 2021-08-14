@@ -110,6 +110,8 @@ func init() {
 				os.Exit(-1)
 			}
 
+			log.Info(fmt.Sprintf("Parsed scionaddr as: %s", rAddr.String()))
+
 			*remoteIAFlag = rAddr.IA.String()
 			*remoteIpFlag = rAddr.Host.IP.String()
 			*remotePortFlag = rAddr.Host.Port
