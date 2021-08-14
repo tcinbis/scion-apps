@@ -9,6 +9,7 @@ import (
 	flowteledbus "github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus"
 	"github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus/datalogger"
 	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
+	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/pkg/profile"
 	"io"
 	"math"
@@ -103,13 +104,15 @@ func init() {
 		x := strings.Split(*target, ",")
 		log.Debug(fmt.Sprintf("target split into: %v\n", x))
 		if *useScion {
-			// we have to parse IP and IA from target
-			if len(x) != 2 {
-				log.Error(fmt.Sprintf("Expected target to be separable by comma, but got %v from %v\n", x, *target))
+			rAddr, err := appnet.ResolveUDPAddr(*target)
+			if err != nil {
+				log.Error(fmt.Sprintf("Error resolving address: %s", *target))
 				os.Exit(-1)
 			}
-			*remoteIAFlag = x[0]
-			*remoteIpFlag = x[1]
+
+			*remoteIAFlag = rAddr.IA.String()
+			*remoteIpFlag = rAddr.Host.IP.String()
+			*remotePortFlag = rAddr.Host.Port
 		} else {
 			// only parse IP from target
 			if len(x) == 1 {
