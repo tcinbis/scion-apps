@@ -90,6 +90,5 @@ func GetScionQuicSession(dispatcher string, sciondAddr string, localAddr *net.UD
 
 	// start QUIC session
 	log.Debug(fmt.Sprintf("Local: %s -- Remote: %s\n", localAddr.String(), remoteScionAddr.String()))
-	log.Debug(fmt.Sprintf("Using path: %s", remoteScionAddr.Path.String()))
 	return squic.Dial(network, localAddr, &remoteScionAddr, addr.SvcNone, quicConfig)
 }
