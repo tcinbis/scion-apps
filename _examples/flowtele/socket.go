@@ -322,8 +322,73 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 	}
 }
 
-func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- error, connID string) *flowtele.FlowTeleSignal {
+func createDataLoggers(ctx context.Context, localAddr, remoteAddr *net.UDPAddr, connID string) (*datalogger.DbusDataLogger, *datalogger.DbusDataLogger, *datalogger.DbusDataLogger) {
+	log.Info(fmt.Sprintf("Configuring data logger now..."))
+	var metadataHeader []string
+	if *useScion {
+		metadataHeader = []string{"localIA", "src", "dest"}
+	} else {
+		metadataHeader = []string{"src", "dest"}
+	}
+
+	srttLogger := datalogger.NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf(
+			"%s-samples-%d-%s-f%s.csv", *csvFilePrefix, time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+		),
+		[]string{"flowID", "microTimestamp", "microSRTT"},
+		metadataHeader,
+		&loggerWait,
+	)
+
+	lostLogger := datalogger.NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf(
+			"lostRatios-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+		),
+		[]string{"flowID", "microTimestamp", "lostRatio"},
+		metadataHeader,
+		&loggerWait,
+	)
+
+	cwndLogger := datalogger.NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf(
+			"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+		),
+		[]string{"flowID", "microTimestamp", "cwnd"},
+		metadataHeader,
+		&loggerWait,
+	)
+
+	var meta []string
+	if *useScion {
+		localIA, err := utils.CheckLocalIA(*sciondAddrFlag, addr.IA{})
+		if err != nil {
+			log.Error(fmt.Sprintf("Error receiving localIA: %v\n", err))
+		}
+		meta = append([]string{localIA.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+	} else {
+		meta = append([]string{localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+	}
+
+	srttLogger.SetMetadata(meta)
+	lostLogger.SetMetadata(meta)
+	cwndLogger.SetMetadata(meta)
+
+	srttLogger.Run()
+	lostLogger.Run()
+	cwndLogger.Run()
+
+	log.Info(fmt.Sprintf("Data logger complete"))
+
+	return srttLogger, lostLogger, cwndLogger
+}
+
+func getFlowTeleSignalInterface(loggerCtx context.Context, qdbus *flowteledbus.QuicDbus, errChannel chan<- error, connID string, localAddr, remoteAddr *net.UDPAddr) *flowtele.FlowTeleSignal {
 	// signal forwarding functions
+	srttLogger, lostLogger, cwndLogger := createDataLoggers(loggerCtx, localAddr, remoteAddr, connID)
+
 	newSrttMeasurement := func(t time.Time, srtt time.Duration) {
 		if qdbus.Conn == nil {
 			// ignore signals if the session bus is not connected
@@ -334,7 +399,7 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 			panic("srtt does not fit in uint32")
 		}
 		dbusSignal := flowteledbus.CreateQuicDbusSignalRtt(connID, t, uint32(srtt.Microseconds()))
-		//dLogger.Send(&datalogger.RTTData{FlowID: connID, Timestamp: t, SRtt: srtt})
+		srttLogger.Send(&datalogger.RTTData{FlowID: connID, Timestamp: t, SRtt: srtt})
 		if qdbus.ShouldSendSignal(dbusSignal) {
 			if err := qdbus.Send(dbusSignal); err != nil {
 				//fmt.Printf("srtt -> %d\n", qdbus.FlowId)
@@ -361,34 +426,10 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 		}
 	}
 
-	//lostRatioDataLogger := datalogger.NewDbusDataLogger(
-	//	fmt.Sprintf(
-	//		"lostRatios-%d-%s-f%d.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), flowId,
-	//	),
-	//	[]string{"flowID", "microTimestamp", "lostRatio"},
-	//	metadataHeader,
-	//	&loggerWait,
-	//)
-	//defer lostRatioDataLogger.Close()
-	//lostRatioDataLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
-	//lostRatioDataLogger.Run()
-
 	packetsLostRatio := func(t time.Time, lostRatio float64) {
-		//lostRatioDataLogger.Send(&datalogger.LostRatioData{FlowID: connID, Timestamp: t, LostRatio: lostRatio})
+		lostLogger.Send(&datalogger.LostRatioData{FlowID: connID, Timestamp: t, LostRatio: lostRatio})
 		//qdbus.Log("loss ratio: %f%%", lostRatio*100)
 	}
-
-	//cwndDataLogger := datalogger.NewDbusDataLogger(
-	//	fmt.Sprintf(
-	//		"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
-	//	),
-	//	[]string{"flowID", "microTimestamp", "cwnd"},
-	//	metadataHeader,
-	//	&loggerWait,
-	//)
-	//defer cwndDataLogger.Close()
-	//cwndDataLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
-	//cwndDataLogger.Run()
 
 	packetsAcked := func(t time.Time, congestionWindow uint64, packetsInFlight uint64, ackedBytes uint64) {
 		if qdbus.Conn == nil {
@@ -406,7 +447,7 @@ func getFlowTeleSignalInterface(qdbus *flowteledbus.QuicDbus, errChannel chan<- 
 			panic("ackedBytes does not fit in uint32")
 		}
 		ackedBytesSum := qdbus.Acked(uint32(ackedBytes))
-		//cwndDataLogger.Send(&datalogger.CwndData{FlowID: connID, Timestamp: t, Cwnd: congestionWindow})
+		cwndLogger.Send(&datalogger.CwndData{FlowID: connID, Timestamp: t, Cwnd: congestionWindow})
 		dbusSignal := flowteledbus.CreateQuicDbusSignalCwnd(connID, t, uint32(congestionWindow), int32(packetsInFlight), ackedBytesSum)
 		if qdbus.ShouldSendSignal(dbusSignal) {
 			if err := qdbus.Send(dbusSignal); err != nil {
@@ -429,29 +470,6 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 		fmt.Printf("%v\n", sig)
 		close(done)
 	}()
-
-	// setup datalogger
-	log.Info(fmt.Sprintf("Configuring data logger now..."))
-
-	var metadataHeader []string
-	if *useScion {
-		metadataHeader = []string{"localIA", "src", "dest"}
-	} else {
-		metadataHeader = []string{"src", "dest"}
-	}
-
-	dLogger := datalogger.NewDbusDataLogger(
-		fmt.Sprintf(
-			"%s-samples-%d-%s-f%d.csv", *csvFilePrefix, time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), flowId,
-		),
-		[]string{"flowID", "microTimestamp", "microSRTT"},
-		metadataHeader,
-		&loggerWait,
-	)
-	defer dLogger.Close()
-	dLogger.SetMetadata([]string{localAddr.String(), remoteAddr.String()})
-	dLogger.Run()
-	log.Info(fmt.Sprintf("Data logger complete"))
 
 	// start dbus
 	log.Info(fmt.Sprintf("Starting DBUS"))
@@ -478,16 +496,6 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 		FlowTeleSignal: flowteleSignalInterface}
 	tlsConfig := &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"Flowtele"}}
 
-	if *useScion {
-		localIA, err := utils.CheckLocalIA(*sciondAddrFlag, addr.IA{})
-		if err != nil {
-			log.Error(fmt.Sprintf("Error receiving localIA: %v\n", err))
-		}
-		dLogger.SetMetadata(append([]string{localIA.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...))
-	} else {
-		dLogger.SetMetadata(append([]string{localAddr.String()}, strings.Split(remoteAddr.String(), ",")...))
-	}
-
 	log.Info(fmt.Sprintf("Establishing quic session"))
 	session, err := establishQuicSession(localAddr, remoteAddr, tlsConfig, quicConfig)
 	if err != nil {
@@ -511,8 +519,9 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 
 	// we initialized quic with a pointer to a dummy FlowTeleSignalInterface.
 	// now that we know the true connectionID we point the pointer to a real interface
-	// TODO: Enable data loggers again!
-	*(flowteleSignalInterface) = *getFlowTeleSignalInterface(qdbus, errChannel, connID)
+	ctx, cancelLoggers := context.WithCancel(context.Background())
+	defer cancelLoggers()
+	*(flowteleSignalInterface) = *getFlowTeleSignalInterface(ctx, qdbus, errChannel, connID, localAddr, remoteAddr)
 
 	log.Info(fmt.Sprintf("Session established."))
 	qdbus.Session = checkFlowTeleSession(session)

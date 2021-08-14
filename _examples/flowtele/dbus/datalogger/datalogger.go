@@ -1,6 +1,7 @@
 package datalogger
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"os"
@@ -36,8 +37,8 @@ type LostRatioData struct {
 }
 
 type DbusDataLogger struct {
+	ctx        context.Context
 	writerChan chan channelData
-	abortChan  chan struct{}
 	csvFile    *os.File
 	writer     *csv.Writer
 	metaData   []string
@@ -45,12 +46,12 @@ type DbusDataLogger struct {
 	wg         *sync.WaitGroup
 }
 
-func NewDbusDataLogger(csvFileName string, csvHeader []string, metaDataHeader []string, waitGroup *sync.WaitGroup) *DbusDataLogger {
+func NewDbusDataLogger(ctx context.Context, csvFileName string, csvHeader []string, metaDataHeader []string, waitGroup *sync.WaitGroup) *DbusDataLogger {
 	file, err := os.Create(csvFileName)
 	check(err)
 	d := DbusDataLogger{
+		ctx:        ctx,
 		writerChan: make(chan channelData, 100),
-		abortChan:  make(chan struct{}, 1),
 		csvFile:    file,
 		header:     append(csvHeader, metaDataHeader...),
 		wg:         waitGroup,
@@ -80,7 +81,6 @@ func (d *DbusDataLogger) writeHeader() {
 
 func (d *DbusDataLogger) Close() {
 	close(d.writerChan)
-	close(d.abortChan)
 }
 
 func (d *DbusDataLogger) Run() {
@@ -97,8 +97,9 @@ func (d *DbusDataLogger) Run() {
 	loop:
 		for {
 			select {
-			case <-d.abortChan:
-				fmt.Println("CSV Writer received abort. Flushing file")
+			case <-d.ctx.Done():
+				d.Close()
+				fmt.Println("CSV Writer ctx Done. Flushing file")
 				for s := range d.writerChan {
 					check(d.writer.Write(append(s, d.metaData...)))
 					check(d.writer.Error())
