@@ -86,7 +86,11 @@ const (
 func init() {
 	utils.SetupLogger()
 	kingpin.Parse()
-	localIAFromFlag = *utils.SetAddrIA(*localIAFlag)
+	localIAFromFlag, err := utils.CheckLocalIA(*sciondAddrFlag, *utils.SetAddrIA(*localIAFlag))
+	if err != nil {
+		log.Error(fmt.Sprintf("Error fetching localIA from SCIOND: %v\n", err))
+		os.Exit(-1)
+	}
 	log.Debug(fmt.Sprintf("LocalIA %v\n", localIAFromFlag))
 
 	if len(*target) > 0 {
@@ -177,9 +181,7 @@ func main() {
 
 func invokePathFetching(closeChannel chan struct{}, errChannel chan error) {
 	sciondAddr := *sciondAddrFlag
-	localIA := localIAFromFlag
-	remoteIA := remoteIAFromFlag
-	paths, err := fetchPaths(sciondAddr, localIA, remoteIA)
+	paths, err := fetchPaths(sciondAddr, localIAFromFlag, remoteIAFromFlag)
 	if err != nil {
 		errChannel <- err
 	} else {
@@ -264,12 +266,6 @@ func fetchPath(pathDescription *utils.ScionPathDescription, sciondAddr string, l
 
 func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Session, error) {
 	if *useScion {
-		localIA, err := utils.CheckLocalIA(*sciondAddrFlag, localIAFromFlag)
-		if err != nil {
-			log.Error(fmt.Sprintf("Error fetching localIA from SCIOND: %v\n", err))
-		}
-		remoteIA := remoteIAFromFlag
-
 		log.Debug("Using scion for QUIC session.")
 		var pathDescription *utils.ScionPathDescription
 		if !scionPath.IsEmpty() {
@@ -285,7 +281,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 			pathDescription = pathDescriptions[*scionPathsIndex]
 		} else {
 			log.Info("Did not specify --path or --paths-file and --paths-index! Choosing dynamically...")
-			paths, err := fetchPaths(*sciondAddrFlag, localIA, remoteIA)
+			paths, err := fetchPaths(*sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)
 			if err != nil || len(paths) < 1 {
 				return nil, fmt.Errorf("error fetching paths dynamically")
 			}
@@ -296,16 +292,16 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 		// fetch path fitting to description
 		var remoteScionAddr snet.UDPAddr
 		remoteScionAddr.Host = remoteAddr
-		remoteScionAddr.IA = remoteIA
-		if !remoteIA.Equal(localIA) {
-			path, err := fetchPath(pathDescription, *sciondAddrFlag, localIA, remoteIA)
+		remoteScionAddr.IA = remoteIAFromFlag
+		if !remoteIAFromFlag.Equal(localIAFromFlag) {
+			path, err := fetchPath(pathDescription, *sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)
 			if err != nil {
 				return nil, err
 			}
 			remoteScionAddr.Path = path.Path()
 			remoteScionAddr.NextHop = path.UnderlayNextHop()
 		}
-		return utils.GetScionQuicSession(*dispatcherFlag, *sciondAddrFlag, localAddr, remoteScionAddr, localIA, quicConfig)
+		return utils.GetScionQuicSession(*dispatcherFlag, *sciondAddrFlag, localAddr, remoteScionAddr, localIAFromFlag, quicConfig)
 	} else {
 		// open UDP connection
 		// localAddr := net.UDPAddr{IP: net.IPv4zero, Port: 0}
@@ -326,7 +322,7 @@ func createDataLoggers(ctx context.Context, localAddr, remoteAddr *net.UDPAddr, 
 	log.Info(fmt.Sprintf("Configuring data logger now..."))
 	var metadataHeader []string
 	if *useScion {
-		metadataHeader = []string{"localIA", "src", "dest"}
+		metadataHeader = []string{"localIA", "remoteIA", "src", "dest"}
 	} else {
 		metadataHeader = []string{"src", "dest"}
 	}
@@ -367,7 +363,7 @@ func createDataLoggers(ctx context.Context, localAddr, remoteAddr *net.UDPAddr, 
 		if err != nil {
 			log.Error(fmt.Sprintf("Error receiving localIA: %v\n", err))
 		}
-		meta = append([]string{localIA.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+		meta = append([]string{localIA.String(), remoteIAFromFlag.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
 	} else {
 		meta = append([]string{localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
 	}

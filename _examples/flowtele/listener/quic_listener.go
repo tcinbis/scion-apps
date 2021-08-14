@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
+	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"io"
 	"net"
@@ -200,6 +201,8 @@ func main() {
 				errs <- fmt.Errorf("Error starting QUIC listener: %s", err)
 				return
 			}
+			log.Info(fmt.Sprintf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr()))
+
 			// defer listener.Close()
 			log.Info(fmt.Sprintf("Listening for QUIC connections on %s\n", listener.Addr().String()))
 			ctx, cancel := context.WithCancel(context.Background())
