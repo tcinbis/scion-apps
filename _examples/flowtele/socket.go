@@ -58,7 +58,7 @@ var (
 	scionPathsFile  = kingpin.Flag("paths-file", "File containing a list of SCION paths to the destination").Default("").String()
 	scionPathsIndex = kingpin.Flag("paths-index", "Index of the path to use in the --paths-file").Default("0").Int()
 
-	rate          = kingpin.Flag("rate", "Fixed rate in Mbits/s").Default("0").Uint64()
+	rate          = kingpin.Flag("rate", "Fixed rate in Mbit/s").Default("0").Uint64()
 	csvFilePrefix = kingpin.Flag("csv-prefix", "File prefix to use for writing the CSV file.").Default("rtt").String()
 	localIAFlag   = kingpin.Flag("local-ia", "ISD-AS address to listen on.").String()
 	remoteIAFlag  = kingpin.Flag("remote-ia", "ISD-AS address to connect to.").String()
@@ -250,6 +250,7 @@ func establishQuicSession(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, tlsCo
 				return nil, fmt.Errorf("SCION path index out of range %d >= %d", *scionPathsIndex, len(pathDescriptions))
 			}
 			pathDescription = pathDescriptions[*scionPathsIndex]
+			log.Info(fmt.Sprintf("Using path: %s\n", pathDescription.String()))
 		} else {
 			log.Info("Did not specify --path or --paths-file and --paths-index! Choosing dynamically...")
 			paths, err := utils.FetchPaths(*sciondAddrFlag, localIAFromFlag, remoteIAFromFlag)

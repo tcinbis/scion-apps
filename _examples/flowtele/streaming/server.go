@@ -311,7 +311,14 @@ func writeJson(obj interface{}, filename string) {
 		res, err = json.MarshalIndent(obj, "", "\t")
 	}
 	check(err)
-	f, err := os.Create(path.Join("/home/tom/go/src/scion-apps/_examples/flowtele/", filename))
+
+	currDir, err := os.Getwd()
+	if err != nil {
+		log.Println(err)
+		os.Exit(-1)
+	}
+
+	f, err := os.Create(path.Join(currDir, filename))
 	check(err)
 	defer f.Close()
 
