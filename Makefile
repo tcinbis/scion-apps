@@ -27,7 +27,10 @@ build: scion-bat \
 	example-helloworld \
 	example-helloquic \
 	example-hellodrkey \
-	example-shttp-client example-shttp-server example-shttp-fileserver example-shttp-proxy
+	example-shttp-client example-shttp-server example-shttp-fileserver example-shttp-proxy \
+
+
+flowtele: example-flowtele-socket example-flowtele-listener
 
 clean:
 	go clean ./...
@@ -135,3 +138,11 @@ example-shttp-proxy:
 .PHONY: example-hellodrkey
 example-hellodrkey:
 	go build -tags=$(TAGS) -o $(BIN)/$@ ./_examples/hellodrkey/
+
+.PHONY: example-flowtele-socket
+example-flowtele-socket:
+	go build -tags=$(TAGS) -o $(BIN)/$@ ./_examples/flowtele/
+
+.PHONY: example-flowtele-listener
+example-flowtele-listener:
+	go build -tags=$(TAGS) -o $(BIN)/$@ ./_examples/flowtele/listener
