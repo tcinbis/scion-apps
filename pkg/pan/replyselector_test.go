@@ -196,7 +196,6 @@ func DummyMultiReplySelector() *MultiReplySelector {
 		useUpdates: false,
 		IaRemotes:  make(map[addr.IA][]UdpAddrKey),
 		IaPaths:    make(map[addr.IA][]*Path),
-		FixedPath:  make(map[UdpAddrKey]*Path),
 	}
 
 	s.OnPacketReceived(rAddr, UDPAddr{}, &Path{

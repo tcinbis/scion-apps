@@ -406,6 +406,11 @@ func (s *MultiReplySelector) Close() error {
 func (s *MultiReplySelector) Export() ([]byte, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+	for remoteKey, path := range s.RemotesPath {
+		path.FetchMetadata()
+		s.RemotesPath[remoteKey] = path
+	}
+
 	return json.Marshal(s)
 }
 
