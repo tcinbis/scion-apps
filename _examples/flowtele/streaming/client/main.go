@@ -44,8 +44,9 @@ func main() {
 		Transport: shttp.NewRoundTripper(&tls.Config{InsecureSkipVerify: true}, nil),
 	}
 
+	query := fmt.Sprintf("https://%s/%s", *serverAddrStr, *uriStr)
+	fmt.Printf("Requesting: %s\n", query)
 	if *printBody {
-		query := fmt.Sprintf("https://%s/%s", *serverAddrStr, *uriStr)
 		resp, err := c.Get(shttp.MangleSCIONAddrURL(query))
 		if err != nil {
 			log.Fatal("GET request failed: ", err)
@@ -56,7 +57,6 @@ func main() {
 	}
 
 	// fetch directory and extract links
-	query := fmt.Sprintf("https://%s/%s", *serverAddrStr, *uriStr)
 	resp, err := c.Get(shttp.MangleSCIONAddrURL(query))
 	if err != nil {
 		log.Fatal("GET request failed: ", err)
