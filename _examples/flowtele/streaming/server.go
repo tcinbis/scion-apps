@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/fsnotify/fsnotify"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/flowtele"
 	"github.com/lucas-clemente/quic-go/http3"
@@ -13,6 +14,7 @@ import (
 	"github.com/netsec-ethz/scion-apps/pkg/shttp"
 	slog "github.com/scionproto/scion/go/lib/log"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -279,6 +282,8 @@ func startSCIONServer(handler http.Handler) {
 		}
 	}(selector)
 
+	initMonitorPanMappings(selector)
+
 	for {
 		allData := server.Stats.All()
 		sort.Slice(allData, func(i, j int) bool {
@@ -330,6 +335,47 @@ func writeJson(obj interface{}, filename string) {
 	_, err = w.Write(res)
 	check(err)
 	w.Flush()
+}
+
+func initMonitorPanMappings(sel *pan.MultiReplySelector) {
+	callback := func(s string) {
+		handleNewPanPath(sel, s)
+	}
+	configureFileWatch("/home/tom/go/src/scion-apps/_examples/flowtele/streaming", "pan-paths.json", callback)
+}
+
+func configureFileWatch(watchDir, filename string, writeCallback func(string)) {
+	// creates a new file watcher
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		fmt.Println("ERROR", err)
+	}
+	defer watcher.Close()
+	done := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				if strings.HasSuffix(event.Name, filename) {
+					if event.Op&fsnotify.Write == fsnotify.Write {
+						log.Println("modified file:", event.Name)
+						writeCallback(event.Name)
+					}
+				}
+			case err := <-watcher.Errors:
+				fmt.Println("ERROR", err)
+			}
+		}
+	}()
+
+	// out of the box fsnotify can watch a single file, or a single directory
+	if err := watcher.Add(watchDir); err != nil {
+		fmt.Println("ERROR", err)
+	}
+	time.Sleep(100 * time.Second)
+	<-done
+
 }
 
 func main() {
@@ -402,4 +448,42 @@ func check(e error) {
 		fmt.Fprintln(os.Stderr, "Fatal error:", e)
 		os.Exit(1)
 	}
+}
+
+func handleNewPanPath(sel *pan.MultiReplySelector, filepath string) {
+	mapping, err := parsePanPaths(filepath)
+	if err != nil {
+		check(err)
+	}
+	for _, elem := range mapping {
+		fmt.Println(elem)
+		path := sel.PathFromElement(elem.Remote, elem.PathElement)
+		if path == nil {
+			log.Printf("Couldn't find path for remote: %s and path element: %s", elem.Remote.String(), elem.PathElement)
+			continue
+		}
+		sel.SetFixedPath(elem.Remote, path)
+	}
+}
+
+type PanMapping struct {
+	Remote      pan.UDPAddr `json:"remote"`
+	PathElement string      `json:"path_element"`
+}
+
+func parsePanPaths(filename string) ([]PanMapping, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("error opening %s: %v", filename, err)
+	}
+	byteJson, _ := io.ReadAll(file)
+	err = file.Close()
+	check(err)
+	err = os.Remove(filename)
+	if err != nil {
+		log.Printf("Error deleting %s: %v\n", filename, err)
+	}
+
+	var mapping []PanMapping
+	return mapping, json.Unmarshal(byteJson, &mapping)
 }
