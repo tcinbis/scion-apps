@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"github.com/scionproto/scion/go/lib/addr"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -210,4 +212,27 @@ func IsInterfaceOnPath(p *Path, pi PathInterface) bool {
 		}
 	}
 	return false
+}
+
+// PathInterfaceFromString takes a string of the form isd-as-IFid and returns a PathInterface from it
+func PathInterfaceFromString(s string) (PathInterface, error) {
+	regPattern := regexp.MustCompile(`(?P<isdas>[\d]+-[\w]+:[\d]+:[\w\d]+)-(?P<interface>[\d]+)$`)
+	match := regPattern.FindStringSubmatch(s)
+	if len(match) != 2 {
+		return PathInterface{}, fmt.Errorf("invalid path interface for %s. regex match failed", s)
+	}
+
+	ia, err := addr.IAFromString(match[0])
+	if err != nil {
+		return PathInterface{}, err
+	}
+	ifid, err := strconv.Atoi(match[1])
+	if err != nil {
+		return PathInterface{}, err
+	}
+
+	return PathInterface{
+		IA:   ia,
+		IfID: IfID(ifid),
+	}, nil
 }
