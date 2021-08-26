@@ -38,12 +38,13 @@ const (
 )
 
 var (
-	ip         = kingpin.Flag("ip", "ip to listen on").Default("127.0.0.1").String()
-	port       = kingpin.Flag("port", "port the server listens on").Default("8001").Uint()
-	useScion   = kingpin.Flag("scion", "Enable serving server via SCION").Default("false").Bool()
-	certDir    = kingpin.Flag("certs", "Path to the certs directory.").Default("").String()
-	dataDir    = kingpin.Flag("data", "Path to the data directory.").Default("").String()
-	mappingDir = kingpin.Flag("mapping", "Path to mapping directory.").Default("").String()
+	ip                     = kingpin.Flag("ip", "ip to listen on").Default("127.0.0.1").String()
+	port                   = kingpin.Flag("port", "port the server listens on").Default("8001").Uint()
+	useScion               = kingpin.Flag("scion", "Enable serving server via SCION").Default("false").Bool()
+	certDir                = kingpin.Flag("certs", "Path to the certs directory.").Default("").String()
+	dataDir                = kingpin.Flag("data", "Path to the data directory.").Default("").String()
+	mappingDir             = kingpin.Flag("mapping", "Path to mapping directory.").Default("").String()
+	interactivePathChanges = kingpin.Flag("interactive", "Enables interactive path changes via the terminal").Default("false").Bool()
 )
 
 func init() {
@@ -82,7 +83,7 @@ func getQuicConf(stats http3.HTTPStats) *quic.Config {
 	}, func(t time.Time, newSlowStartThreshold uint64) {
 
 	}, func(t time.Time, lostRatio float64) {
-		fmt.Println(lostRatio)
+		fmt.Printf("Current loss ratio: %.3f\n", lostRatio)
 	}, func(t time.Time, congestionWindow uint64, packetsInFlight uint64, ackedBytes uint64) {
 
 	})
@@ -262,20 +263,22 @@ func startSCIONServer(handler http.Handler) {
 		}
 	}()
 
-	//go func(sel *pan.MultiReplySelector) {
-	//	for {
-	//		remote, ok := sel.AskPathChanges()
-	//		if ok {
-	//			s, ok := server.Stats.(*shttp.SHTTPStats)
-	//			if !ok {
-	//				fmt.Println("Error casting HTTP Server stats.")
-	//			}
-	//			s.GetSessionByRemoteAddr(remote).MigrateConnection()
-	//		}
-	//		time.Sleep(1 * time.Second)
-	//	}
-	//}(selector)
-	//
+	if *interactivePathChanges {
+		go func(sel *pan.MultiReplySelector) {
+			for {
+				remote, ok := sel.AskPathChanges()
+				if ok {
+					s, ok := server.Stats.(*shttp.SHTTPStats)
+					if !ok {
+						fmt.Println("Error casting HTTP Server stats.")
+					}
+					s.GetSessionByRemoteAddr(remote).MigrateConnection()
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}(selector)
+	}
+
 	go func(sel *pan.MultiReplySelector) {
 		for {
 			statsExporter(server.Stats.All(), sel)
