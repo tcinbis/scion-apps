@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/bclicn/color"
 	"github.com/scionproto/scion/go/lib/addr"
+	"log"
 	"net"
 	"os"
 	"regexp"
@@ -152,6 +153,44 @@ func (s *MultiReplySelector) ClearFixedPath(dst UDPAddr) {
 	}
 	r.ClearFixedPath()
 	s.Remotes[ukey] = r
+}
+
+func (s *MultiReplySelector) PathFromElement(dst UDPAddr, pElem string) *Path {
+	ukey := makeKey(dst)
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	remotePaths := s.Remotes[ukey].paths
+	iaPaths := s.IaPaths[ukey.IA]
+
+	splitted := strings.Split(pElem, ">")
+	if len(splitted) != 2 {
+		log.Fatalf("Error splitting %s into %v", pElem, splitted)
+	}
+	bottleneckEgressInterface, err := PathInterfaceFromString(splitted[0])
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	bottleneckIngressInterface, err := PathInterfaceFromString(splitted[1])
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+
+	for _, rPath := range remotePaths {
+		if IsInterfaceOnPath(rPath, bottleneckEgressInterface) && IsInterfaceOnPath(rPath, bottleneckIngressInterface) {
+			return rPath
+		}
+	}
+
+	for _, rPath := range iaPaths {
+		if IsInterfaceOnPath(rPath, bottleneckEgressInterface) && IsInterfaceOnPath(rPath, bottleneckIngressInterface) {
+			return rPath
+		}
+	}
+
+	return nil
 }
 
 func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
