@@ -101,6 +101,7 @@ Features / Usecases
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/snet"
@@ -121,6 +122,23 @@ type UDPAddr struct {
 	IA   addr.IA
 	IP   net.IP
 	Port int
+}
+
+func (a *UDPAddr) UnmarshalJSON(bytes []byte) error {
+	str, err := strconv.Unquote(string(bytes))
+	if err != nil {
+		return err
+	}
+
+	uAddr, err := snet.ParseUDPAddr(str)
+	if err != nil {
+		return err
+	}
+	a.IA = uAddr.IA
+	a.IP = uAddr.Host.IP
+	a.Port = uAddr.Host.Port
+
+	return nil
 }
 
 func (a UDPAddr) Network() string {
