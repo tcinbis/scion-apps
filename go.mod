@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.0 // indirect
 	github.com/bclicn/color v0.0.0-20180711051946-108f2023dc84
+	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/gorilla/handlers v1.5.1
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
 	github.com/kormat/fmt15 v0.0.0-20181112140556-ee69fecb2656
