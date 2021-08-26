@@ -99,7 +99,7 @@ func (s *MultiReplySelector) UpdateRemoteCwnd(addr UDPAddr, cwnd uint64) {
 
 	rEntry, ok := s.Remotes[ukey]
 	if !ok {
-		fmt.Printf("Unkown remote with key: %s", ukey.String())
+		fmt.Printf("Unkown remote with key: %s\n", ukey.String())
 		return
 	}
 	currentPath := rEntry.paths[0]

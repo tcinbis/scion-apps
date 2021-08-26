@@ -70,20 +70,36 @@ func main() {
 		return
 	}
 
+	bufSize := 10000000
 	for _, l := range links {
 		if strings.HasSuffix(l, *fileEnding) {
 			// download it!
 			query = fmt.Sprintf("https://%s/%s/%s", *serverAddrStr, *uriStr, l)
-			tStart := time.Now()
+
 			resp, err := c.Get(query)
 			if err != nil {
 				log.Fatal("GET request failed: ", err)
 			}
 
-			body, err := io.ReadAll(resp.Body)
-			tDur := time.Now().Sub(tStart).Seconds()
+			totalTime, totalBytes := 0.0, 0
+			buf := make([]byte, bufSize)
+			for {
+				tStart := time.Now()
+				n, err := io.ReadFull(resp.Body, buf)
+				tDur := time.Now().Sub(tStart).Seconds()
+				if err == io.EOF {
+					break
+				}
+				fmt.Printf("Current speed: %.2f MBit/s\n", float64(bufSize)*Byte/tDur/MBit)
+				totalTime += tDur
+				totalBytes += n
+				if err == io.ErrUnexpectedEOF {
+					break
+				}
+			}
+
 			resp.Body.Close()
-			fmt.Printf("fetching %s with %.2f MBit/s\n", query, float64(len(body))*Byte/tDur/MBit)
+			fmt.Printf("Total for fetching %s with %.2f MBit/s\n", query, float64(totalBytes)*Byte/totalTime/MBit)
 			time.Sleep(2 * time.Second)
 		}
 	}
