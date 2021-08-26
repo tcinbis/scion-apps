@@ -31,6 +31,7 @@ func main() {
 	serverAddrStr := flag.String("s", "", "Server address (<ISD-AS,[IP]> or <hostname>, optionally with appended <:port>)")
 	uriStr := flag.String("u", "", "URI to request from server.")
 	fileEnding := flag.String("f", ".m4v", "Suffix to filter links by.")
+	printBody := flag.Bool("p", false, "Whether to print the response's body to stdout.")
 	flag.Parse()
 
 	if len(*serverAddrStr) == 0 {
@@ -41,6 +42,17 @@ func main() {
 	// Create a standard server with our custom RoundTripper
 	c := &http.Client{
 		Transport: shttp.NewRoundTripper(&tls.Config{InsecureSkipVerify: true}, nil),
+	}
+
+	if *printBody {
+		query := fmt.Sprintf("https://%s/%s", *serverAddrStr, *uriStr)
+		resp, err := c.Get(shttp.MangleSCIONAddrURL(query))
+		if err != nil {
+			log.Fatal("GET request failed: ", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		resp.Body.Close()
 	}
 
 	// fetch directory and extract links
