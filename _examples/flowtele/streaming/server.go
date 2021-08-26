@@ -38,11 +38,12 @@ const (
 )
 
 var (
-	ip       = kingpin.Flag("ip", "ip to listen on").Default("127.0.0.1").String()
-	port     = kingpin.Flag("port", "port the server listens on").Default("8001").Uint()
-	useScion = kingpin.Flag("scion", "Enable serving server via SCION").Default("false").Bool()
-	certDir  = kingpin.Flag("certs", "Path to the certs directory.").Default("").String()
-	dataDir  = kingpin.Flag("data", "Path to the data directory.").Default("").String()
+	ip         = kingpin.Flag("ip", "ip to listen on").Default("127.0.0.1").String()
+	port       = kingpin.Flag("port", "port the server listens on").Default("8001").Uint()
+	useScion   = kingpin.Flag("scion", "Enable serving server via SCION").Default("false").Bool()
+	certDir    = kingpin.Flag("certs", "Path to the certs directory.").Default("").String()
+	dataDir    = kingpin.Flag("data", "Path to the data directory.").Default("").String()
+	mappingDir = kingpin.Flag("mapping", "Path to mapping directory.").Default("").String()
 )
 
 func init() {
@@ -341,7 +342,11 @@ func initMonitorPanMappings(sel *pan.MultiReplySelector) {
 	callback := func(s string) {
 		handleNewPanPath(sel, s)
 	}
-	configureFileWatch("/home/tom/go/src/scion-apps/_examples/flowtele/streaming", "pan-paths.json", callback)
+	if *mappingDir == "" {
+		fmt.Println("Can't init file watch without mapping dir!")
+		return
+	}
+	configureFileWatch(*mappingDir, "pan-paths.json", callback)
 }
 
 func configureFileWatch(watchDir, filename string, writeCallback func(string)) {
