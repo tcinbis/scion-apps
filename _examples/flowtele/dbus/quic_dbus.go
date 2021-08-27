@@ -1,6 +1,7 @@
 package flowteledbus
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -67,6 +68,30 @@ func NewQuicDbus(flowId int32, applyControl bool, peer string) *QuicDbus {
 	return &d
 }
 
+func NewQuicDbusCtx(ctx context.Context, flowId int32, applyControl bool, peer string) *QuicDbus {
+	var d QuicDbus
+	d.Init()
+	d.context = ctx
+	d.FlowId = flowId
+	d.peer = peer
+	d.applyControl = applyControl
+	d.ServiceName = getQuicServiceName(flowId, peer)
+	d.ObjectPath = getQuicObjectPath(flowId, peer)
+	d.InterfaceName = getQuicInterfaceName(flowId, peer)
+	d.LogPrefix = fmt.Sprintf("QUIC_%d", d.FlowId)
+	d.ExportedMethods = quicDbusMethodInterface{quicDbus: &d}
+	d.SignalMatchOptions = []dbus.MatchOption{}
+	d.ExportedSignals = allQuicDbusSignals()
+	d.LogSignals = true
+	d.SetLogMinIntervalForAllSignals(time.Second)
+
+	if d.context != nil {
+		d.observeContext()
+	}
+
+	return &d
+}
+
 func (qdb *QuicDbus) Reinit(flowId int32, applyControl bool, peer string) {
 	qdb.FlowId = flowId
 	qdb.peer = peer
@@ -74,7 +99,7 @@ func (qdb *QuicDbus) Reinit(flowId int32, applyControl bool, peer string) {
 	qdb.ServiceName = getQuicServiceName(flowId, peer)
 	qdb.ObjectPath = getQuicObjectPath(flowId, peer)
 	qdb.InterfaceName = getQuicInterfaceName(flowId, peer)
-	qdb.LogPrefix = fmt.Sprintf("QUIC_%s", qdb.peer)
+	qdb.LogPrefix = fmt.Sprintf("QUIC_%s", peer)
 }
 
 func (qdb *QuicDbus) LogRtt(t time.Time, rtt time.Duration) {

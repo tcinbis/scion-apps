@@ -2,6 +2,7 @@ package flowteledbus
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 )
 
 type DbusBase struct {
+	context        context.Context
 	ServiceName    string
 	ObjectPath     dbus.ObjectPath
 	InterfaceName  string
@@ -237,4 +239,17 @@ func (db *DbusBase) Register() error {
 
 func (db *DbusBase) Log(formatString string, args ...interface{}) {
 	fmt.Printf(db.LogPrefix+": "+formatString+"\n", args...)
+}
+
+func (db *DbusBase) observeContext() {
+	for {
+		select {
+		case <-db.context.Done():
+			fmt.Println("Closing QBUS.")
+			db.Close()
+			return
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
 }
