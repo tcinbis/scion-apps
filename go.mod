@@ -6,6 +6,8 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.0 // indirect
 	github.com/bclicn/color v0.0.0-20180711051946-108f2023dc84
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/godbus/dbus/v5 v5.0.4
+	github.com/google/pprof v0.0.0-20210804190019-f964ff605595 // indirect
 	github.com/gorilla/handlers v1.5.1
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
 	github.com/kormat/fmt15 v0.0.0-20181112140556-ee69fecb2656
@@ -15,6 +17,7 @@ require (
 	github.com/msteinert/pam v0.0.0-20190215180659-f29b9f28d6f9
 	github.com/netsec-ethz/rains v0.2.0
 	github.com/pelletier/go-toml v1.9.3
+	github.com/pkg/profile v1.6.0 // indirect
 	github.com/scionproto/scion v0.6.0
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
