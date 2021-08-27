@@ -91,9 +91,9 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 		ob = stats.NotifyChanged
 	}
 
-	var newSessionCallback func(connID string, session quic.FlowTeleSession) error
+	var newSessionCallback func(ctx context.Context, connID string, session quic.FlowTeleSession) error
 	if *useScion {
-		newSessionCallback = func(connID string, session quic.FlowTeleSession) error {
+		newSessionCallback = func(ctx context.Context, connID string, session quic.FlowTeleSession) error {
 			fmt.Println("Starting DBUS")
 			qdbus := flowteledbus.NewQuicDbus(0, true, connID)
 			qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
@@ -107,8 +107,6 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 			}
 			// we initialized quic with a pointer to a dummy FlowTeleSignalInterface.
 			// now that we know the true connectionID we point the pointer to a real interface
-			ctx, cancelLoggers := context.WithCancel(context.Background())
-			defer cancelLoggers()
 			*(dummyFlowteleSignalInterface) = *flowteledbus.GetFlowTeleSignalInterface(
 				ctx,
 				qdbus,
@@ -124,7 +122,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 			return nil
 		}
 	} else {
-		newSessionCallback = func(connID string, session quic.FlowTeleSession) error {
+		newSessionCallback = func(ctx context.Context, connID string, session quic.FlowTeleSession) error {
 			return nil
 		}
 	}
