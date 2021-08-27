@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
 	"github.com/scionproto/scion/go/lib/addr"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -154,7 +153,7 @@ func check(err error) {
 	}
 }
 
-func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, waitGroup *sync.WaitGroup, localIA, remoteIA addr.IA, localAddr, remoteAddr *net.UDPAddr, connID string) (*DbusDataLogger, *DbusDataLogger, *DbusDataLogger) {
+func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, waitGroup *sync.WaitGroup, localIA, remoteIA addr.IA, localAddr, remoteAddr string, connID string) (*DbusDataLogger, *DbusDataLogger, *DbusDataLogger) {
 	log.Info(fmt.Sprintf("Configuring data logger now..."))
 	var metadataHeader []string
 	if useScion {
@@ -166,7 +165,7 @@ func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, wai
 	srttLogger := NewDbusDataLogger(
 		ctx,
 		fmt.Sprintf(
-			"%s-samples-%d-%s-f%s.csv", csvPrefix, time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+			"%s-samples-%d-%s-f%s.csv", csvPrefix, time.Now().Unix(), utils.CleanStringForFS(remoteAddr), connID,
 		),
 		[]string{"flowID", "microTimestamp", "microSRTT"},
 		metadataHeader,
@@ -176,7 +175,7 @@ func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, wai
 	lostLogger := NewDbusDataLogger(
 		ctx,
 		fmt.Sprintf(
-			"lostRatios-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+			"lostRatios-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr), connID,
 		),
 		[]string{"flowID", "microTimestamp", "lostRatio"},
 		metadataHeader,
@@ -186,7 +185,7 @@ func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, wai
 	cwndLogger := NewDbusDataLogger(
 		ctx,
 		fmt.Sprintf(
-			"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr.String()), connID,
+			"cwnd-samples-%d-%s-f%s.csv", time.Now().Unix(), utils.CleanStringForFS(remoteAddr), connID,
 		),
 		[]string{"flowID", "microTimestamp", "cwnd"},
 		metadataHeader,
@@ -195,9 +194,9 @@ func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, wai
 
 	var meta []string
 	if useScion {
-		meta = append([]string{localIA.String(), remoteIA.String(), localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+		meta = append([]string{localIA.String(), remoteIA.String(), localAddr}, strings.Split(remoteAddr, ",")...)
 	} else {
-		meta = append([]string{localAddr.String()}, strings.Split(remoteAddr.String(), ",")...)
+		meta = append([]string{localAddr}, strings.Split(remoteAddr, ",")...)
 	}
 
 	srttLogger.SetMetadata(meta)

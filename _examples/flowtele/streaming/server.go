@@ -10,8 +10,10 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/flowtele"
 	"github.com/lucas-clemente/quic-go/http3"
+	flowteledbus "github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus"
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/shttp"
+	"github.com/scionproto/scion/go/lib/addr"
 	slog "github.com/scionproto/scion/go/lib/log"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"io"
@@ -23,6 +25,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -45,7 +48,10 @@ var (
 	dataDir                = kingpin.Flag("data", "Path to the data directory.").Default("").String()
 	mappingDir             = kingpin.Flag("mapping", "Path to mapping directory.").Default("").String()
 	interactivePathChanges = kingpin.Flag("interactive", "Enables interactive path changes via the terminal").Default("false").Bool()
+	csvFilePrefix          = kingpin.Flag("csv-prefix", "File prefix to use for writing the CSV file.").Default("rtt").String()
 )
+
+var loggerWait sync.WaitGroup
 
 func init() {
 	kingpin.Parse()
@@ -76,35 +82,66 @@ func getUDPConn(addr string) *net.UDPConn {
 	return udpConn
 }
 
-func getQuicConf(stats http3.HTTPStats) *quic.Config {
+func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA addr.IA) *quic.Config {
 
-	flowteleSignalInterface := flowtele.CreateFlowteleSignalInterface(func(t time.Time, srtt time.Duration) {
-		//fmt.Printf("t: %v, srtt: %v\n", t, srtt)
-	}, func(t time.Time, newSlowStartThreshold uint64) {
-
-	}, func(t time.Time, lostRatio float64) {
-		fmt.Printf("Current loss ratio: %.3f\n", lostRatio)
-	}, func(t time.Time, congestionWindow uint64, packetsInFlight uint64, ackedBytes uint64) {
-
-	})
+	dummyFlowteleSignalInterface := flowtele.CreateFlowteleSignalInterface(nil, nil, nil, nil)
 
 	var ob func(oldID, newID quic.StatsClientID)
 	if stats != nil {
 		ob = stats.NotifyChanged
 	}
 
+	var newSessionCallback func(connID string, session quic.FlowTeleSession) error
+	if *useScion {
+		newSessionCallback = func(connID string, session quic.FlowTeleSession) error {
+			fmt.Println("Starting DBUS")
+			qdbus := flowteledbus.NewQuicDbus(0, true, connID)
+			qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
+			qdbus.Session = session
+			if err := qdbus.OpenSessionBus(); err != nil {
+				return err
+			}
+			defer qdbus.Close()
+			if err := qdbus.Register(); err != nil {
+				return err
+			}
+			// we initialized quic with a pointer to a dummy FlowTeleSignalInterface.
+			// now that we know the true connectionID we point the pointer to a real interface
+			ctx, cancelLoggers := context.WithCancel(context.Background())
+			defer cancelLoggers()
+			*(dummyFlowteleSignalInterface) = *flowteledbus.GetFlowTeleSignalInterface(
+				ctx,
+				qdbus,
+				connID,
+				session.LocalAddr().String(),
+				session.RemoteAddr().String(),
+				*useScion,
+				localIA,
+				remoteIA,
+				loggingPrefix,
+				&loggerWait,
+			)
+			return nil
+		}
+	} else {
+		newSessionCallback = func(connID string, session quic.FlowTeleSession) error {
+			return nil
+		}
+	}
+
 	return &quic.Config{
 		// make QUIC idle timout long to allow a delay between starting the listeners and the senders
 		//MaxIdleTimeout: 30 * time.Second,
 		//KeepAlive: true,
-		FlowTeleSignal:       flowteleSignalInterface,
+		FlowTeleSignal:       dummyFlowteleSignalInterface,
 		ConnectionIDObserver: ob,
+		NewSessionCallback:   newSessionCallback,
 	}
 }
 
 func startTCPServer(handler http.Handler) {
 	fmt.Printf("Using QUIC\n")
-	addr := fmt.Sprintf("%s:%d", *ip, *port)
+	serverAddr := fmt.Sprintf("%s:%d", *ip, *port)
 
 	if *certDir == "" {
 		log.Fatal("Cert directory not specified! Can't load certificates.")
@@ -126,11 +163,11 @@ func startTCPServer(handler http.Handler) {
 	stats := shttp.NewSHTTPStats()
 	quicServer := &http3.Server{
 		Server: &http.Server{
-			Addr:      addr,
+			Addr:      serverAddr,
 			Handler:   handler,
 			TLSConfig: tlsConfig,
 		},
-		QuicConfig: getQuicConf(stats),
+		QuicConfig: getQuicConf(stats, *csvFilePrefix, addr.IA{}, addr.IA{}),
 		Stats:      stats,
 	}
 
@@ -151,12 +188,12 @@ func startTCPServer(handler http.Handler) {
 
 	go func() {
 		defer slog.HandlePanic()
-		quicServer.Server.Serve(tls.NewListener(getTCPConn(addr), tlsConfig))
+		quicServer.Server.Serve(tls.NewListener(getTCPConn(serverAddr), tlsConfig))
 	}()
 	//quicServer.ListenAndServeTLS(certFile, keyFile)
 	go func() {
 		defer slog.HandlePanic()
-		quicServer.Serve(getUDPConn(addr))
+		quicServer.Serve(getUDPConn(serverAddr))
 	}()
 
 	for {
@@ -187,10 +224,17 @@ func startTCPServer(handler http.Handler) {
 
 func startSCIONServer(handler http.Handler) {
 	fmt.Printf("Using SCION\n")
-	addr := fmt.Sprintf("%s:%d", *ip, *port)
+	serverAddr := fmt.Sprintf("%s:%d", *ip, *port)
 
 	stats := shttp.NewSHTTPStats()
-	server := shttp.NewScionServer(addr, handler, nil, getQuicConf(stats))
+
+	udpPacketCon, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: int(*port)}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(udpPacketCon.LocalAddr())
+
+	server := shttp.NewScionServer(serverAddr, handler, nil, getQuicConf(stats, *csvFilePrefix, pan.LocalIA(), addr.IA{}))
 	server.Server.Stats = stats
 	//server.Server.SetNewStreamCallback(func(sess *quic.EarlySession, strID quic.StreamID) {
 	//	fmt.Printf("%v %v\n", time.Now(), sess)
@@ -210,11 +254,6 @@ func startSCIONServer(handler http.Handler) {
 	})
 
 	server.Handler = mux
-	udpPacketCon, err := pan.ListenUDP(context.Background(), &net.UDPAddr{Port: int(*port)}, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(udpPacketCon.LocalAddr())
 	go func() {
 		defer slog.HandlePanic()
 		server.Serve(udpPacketCon)
