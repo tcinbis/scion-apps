@@ -51,6 +51,10 @@ func host() *scionHostContext {
 	return &gScionHostContext
 }
 
+func LocalIA() addr.IA {
+	return host().ia
+}
+
 func mustInitScionHostContext() {
 	scionHostCtx, err := initScionHostContext()
 	if err != nil {
