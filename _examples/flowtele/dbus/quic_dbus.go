@@ -86,7 +86,7 @@ func NewQuicDbusCtx(ctx context.Context, flowId int32, applyControl bool, peer s
 	d.SetLogMinIntervalForAllSignals(time.Second)
 
 	if d.context != nil {
-		d.observeContext()
+		go d.observeContext()
 	}
 
 	return &d
