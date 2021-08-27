@@ -107,7 +107,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 			}
 			// we initialized quic with a pointer to a dummy FlowTeleSignalInterface.
 			// now that we know the true connectionID we point the pointer to a real interface
-			*(dummyFlowteleSignalInterface) = *flowteledbus.GetFlowTeleSignalInterface(
+			session.GetConfig().FlowTeleSignal = flowteledbus.GetFlowTeleSignalInterface(
 				ctx,
 				qdbus,
 				connID,
