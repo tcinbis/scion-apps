@@ -101,7 +101,6 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 			if err := qdbus.OpenSessionBus(); err != nil {
 				return err
 			}
-			defer qdbus.Close()
 			if err := qdbus.Register(); err != nil {
 				return err
 			}
