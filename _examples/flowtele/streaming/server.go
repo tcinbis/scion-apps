@@ -94,7 +94,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 	var newSessionCallback func(ctx context.Context, connID string, session quic.FlowTeleSession) error
 	if *useScion {
 		newSessionCallback = func(ctx context.Context, connID string, session quic.FlowTeleSession) error {
-			fmt.Println("Starting DBUS")
+			fmt.Printf("Starting DBUS for: %s\n", connID)
 			qdbus := flowteledbus.NewQuicDbusCtx(ctx, 0, true, connID)
 			qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
 			qdbus.Reinit(0, true, connID)
