@@ -59,7 +59,6 @@ _examples/shttp/server/server
 *.code-workspace
 
 # IntelliJ IDEA workspace
-.idea/
 .DS_Store
 .gomobilebuild
 *.xcframework
