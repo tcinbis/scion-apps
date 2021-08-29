@@ -2,6 +2,7 @@ package flowteledbus
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -197,10 +198,6 @@ func (db *DbusBase) registerMethods() error {
 func (db *DbusBase) registerSignalListeners() error {
 	if err := db.Conn.AddMatchSignal(
 		db.SignalMatchOptions...,
-	// dbus.WithMatchObjectPath(db.ObjectPath),
-	// dbus.WithMatchInterface(db.InterfaceName),
-	// dbus.WithMatchMember("mysignal"),
-	// dbus.WithMatchSender(REMOTE_SERVICE_NAME),
 	); err != nil {
 		return err
 	}
@@ -255,7 +252,7 @@ func (db *DbusBase) Register() error {
 }
 
 func (db *DbusBase) Log(formatString string, args ...interface{}) {
-	fmt.Printf(db.LogPrefix+": "+formatString+"\n", args...)
+	log.Printf(db.LogPrefix+": "+formatString+"\n", args...)
 }
 
 func (db *DbusBase) observeContext() {
