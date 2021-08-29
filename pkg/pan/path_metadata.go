@@ -31,6 +31,10 @@ type PathInterface struct {
 	IfID IfID
 }
 
+func (pi *PathInterface) String() string {
+	return fmt.Sprintf("%s-%d", pi.IA.String(), pi.IfID)
+}
+
 // PathMetadata contains supplementary information about a path.
 //
 // The information about MTU, Latency, Bandwidth etc. are based solely on data
@@ -217,7 +221,7 @@ func IsInterfaceOnPath(p *Path, pi PathInterface) bool {
 // PathInterfaceFromString takes a string of the form isd-as-IFid and returns a PathInterface from it
 func PathInterfaceFromString(s string) (PathInterface, error) {
 	regPattern := regexp.MustCompile(`(?P<isdas>[\d]+-[\w]+:[\d]+:[\w\d]+)-(?P<interface>[\d]+)$`)
-	match := regPattern.FindStringSubmatch(s)
+	match := regPattern.FindStringSubmatch(s)[1:]
 	if len(match) != 2 {
 		return PathInterface{}, fmt.Errorf("invalid path interface for %s. regex match failed", s)
 	}
