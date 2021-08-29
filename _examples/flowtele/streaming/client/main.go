@@ -96,6 +96,11 @@ func main() {
 				if err == io.ErrUnexpectedEOF {
 					break
 				}
+
+				if err != nil {
+					fmt.Printf("Error while receiving: %v\n", err)
+					break
+				}
 			}
 
 			resp.Body.Close()
