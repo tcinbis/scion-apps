@@ -35,13 +35,13 @@ type PathStats struct {
 	// Observed Latency
 	Latency []StatsLatencySample
 	// Observed CWND
-	Cwnd []StatsCwndSample
+	Cwnd *StatsCwndSample
 }
 
 func NewPathStats(p *Path) PathStats {
 	return PathStats{
 		Path:    p,
-		Cwnd:    make([]StatsCwndSample, 0),
+		Cwnd:    nil,
 		Latency: make([]StatsLatencySample, 0),
 	}
 }
@@ -114,17 +114,9 @@ func (s *pathStatsDB) RegisterCwnd(p *Path, cwnd uint64) {
 	if !ok {
 		ps = NewPathStats(p)
 	}
-	if len(ps.Cwnd) < statsNumCwndSamples {
-		ps.Cwnd = append(ps.Cwnd, StatsCwndSample{
-			Time:  time.Now(),
-			Value: cwnd,
-		})
-	} else {
-		copy(ps.Cwnd[0:statsNumCwndSamples-1], ps.Cwnd[1:statsNumCwndSamples])
-		ps.Cwnd[statsNumCwndSamples-1] = StatsCwndSample{
-			Time:  time.Now(),
-			Value: cwnd,
-		}
+	ps.Cwnd = &StatsCwndSample{
+		Time:  time.Now(),
+		Value: cwnd,
 	}
 	ps.Path.Metadata.Cwnd = cwnd
 	s.paths[p.Fingerprint] = ps
@@ -132,8 +124,8 @@ func (s *pathStatsDB) RegisterCwnd(p *Path, cwnd uint64) {
 
 func (s *pathStatsDB) GetPathCwnd(p PathFingerprint) uint64 {
 	if ps, ok := s.paths[p]; ok {
-		if l := len(ps.Cwnd); l > 0 {
-			return ps.Cwnd[l-1].Value
+		if ps.Cwnd != nil {
+			return ps.Cwnd.Value
 		}
 	}
 	return 0
@@ -149,7 +141,7 @@ func (s *pathStatsDB) PathsWithoutCwnd() []*Path {
 	missing := make([]*Path, 0)
 
 	for _, ps := range s.paths {
-		if len(ps.Cwnd) > 0 {
+		if ps.Cwnd == nil {
 			continue
 		}
 		missing = append(missing, ps.Path)
