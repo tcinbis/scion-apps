@@ -2,7 +2,9 @@ package flowteledbus
 
 import (
 	"fmt"
+	"github.com/godbus/dbus/v5/prop"
 	"golang.org/x/net/context"
+	"os"
 	"sync"
 	"time"
 
@@ -21,6 +23,7 @@ type DbusBase struct {
 	ExportedMethods    interface{}
 	SignalMatchOptions []dbus.MatchOption
 	ExportedSignals    []introspect.Signal
+	ExportedProperties map[string]*prop.Prop
 
 	SignalMinInterval   map[QuicDbusSignalType]time.Duration
 	lastSignalSent      map[QuicDbusSignalType]time.Time
@@ -208,16 +211,29 @@ func (db *DbusBase) registerSignalListeners() error {
 	return nil
 }
 
+func (db *DbusBase) exportProps() *prop.Properties {
+	propsSpec := map[string]map[string]*prop.Prop{
+		db.ServiceName: db.ExportedProperties,
+	}
+	props, err := prop.Export(db.Conn, db.ObjectPath, propsSpec)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "export propsSpec failed: %v\n", err)
+		return &prop.Properties{}
+	}
+	return props
+}
+
 func (db *DbusBase) registerIntrospectMethod() error {
-	// fmt.Printf("Name: %s, methods: %+v\n", db.InterfaceName, introspect.Methods(db.ExportedMethods))
+	props := db.exportProps()
 	n := &introspect.Node{
 		Name: string(db.ObjectPath),
 		Interfaces: []introspect.Interface{
 			introspect.IntrospectData,
 			{
-				Name:    db.InterfaceName,
-				Methods: introspect.Methods(db.ExportedMethods),
-				Signals: db.ExportedSignals,
+				Name:       db.InterfaceName,
+				Methods:    introspect.Methods(db.ExportedMethods),
+				Signals:    db.ExportedSignals,
+				Properties: props.Introspection(db.ServiceName),
 			},
 		},
 	}

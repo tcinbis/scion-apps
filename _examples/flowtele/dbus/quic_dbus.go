@@ -3,6 +3,7 @@ package flowteledbus
 import (
 	"context"
 	"fmt"
+	"github.com/godbus/dbus/v5/prop"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -47,14 +48,16 @@ type QuicDbus struct {
 	applyControl       bool
 
 	// peer identifies a quic session communicating with another machine which is identified by this string. Can be an IP/port or SCION address
-	peer string
+	peer   string
+	remote string
 }
 
-func NewQuicDbus(flowId int32, applyControl bool, peer string) *QuicDbus {
+func NewQuicDbus(flowId int32, applyControl bool, peer, remote string) *QuicDbus {
 	var d QuicDbus
 	d.Init()
 	d.FlowId = flowId
 	d.peer = peer
+	d.remote = remote
 	d.applyControl = applyControl
 	d.ServiceName = getQuicServiceName(flowId, peer)
 	d.ObjectPath = getQuicObjectPath(flowId, peer)
@@ -65,31 +68,31 @@ func NewQuicDbus(flowId int32, applyControl bool, peer string) *QuicDbus {
 	d.ExportedSignals = allQuicDbusSignals()
 	d.LogSignals = true
 	d.SetLogMinIntervalForAllSignals(time.Second)
+
+	d.ExportedProperties = map[string]*prop.Prop{
+		"Remote": {
+			d.remote,
+			false,
+			prop.EmitTrue,
+			func(c *prop.Change) *dbus.Error {
+				fmt.Println(c.Name, "changed to", c.Value)
+				return nil
+			},
+		},
+	}
+
 	return &d
 }
 
-func NewQuicDbusCtx(ctx context.Context, flowId int32, applyControl bool, peer string) *QuicDbus {
-	var d QuicDbus
-	d.Init()
+func NewQuicDbusCtx(ctx context.Context, flowId int32, applyControl bool, peer, remote string) *QuicDbus {
+	d := NewQuicDbus(flowId, applyControl, peer, remote)
 	d.context = ctx
-	d.FlowId = flowId
-	d.peer = peer
-	d.applyControl = applyControl
-	d.ServiceName = getQuicServiceName(flowId, peer)
-	d.ObjectPath = getQuicObjectPath(flowId, peer)
-	d.InterfaceName = getQuicInterfaceName(flowId, peer)
-	d.LogPrefix = fmt.Sprintf("QUIC_%d", d.FlowId)
-	d.ExportedMethods = quicDbusMethodInterface{quicDbus: &d}
-	d.SignalMatchOptions = []dbus.MatchOption{}
-	d.ExportedSignals = allQuicDbusSignals()
-	d.LogSignals = true
-	d.SetLogMinIntervalForAllSignals(time.Second)
 
 	if d.context != nil {
 		go d.observeContext()
 	}
 
-	return &d
+	return d
 }
 
 func (qdb *QuicDbus) Reinit(flowId int32, applyControl bool, peer string) {

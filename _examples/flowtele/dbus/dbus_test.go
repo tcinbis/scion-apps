@@ -3,6 +3,7 @@ package flowteledbus
 import (
 	"fmt"
 	"github.com/godbus/dbus/v5"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -44,11 +45,32 @@ func TestQuicDbusSetup(t *testing.T) {
 		fmt.Println(v)
 	}
 
-	time.Sleep(300 * time.Second)
+	time.Sleep(100 * time.Second)
+}
+
+func TestManyQuicDbusSetup(t *testing.T) {
+	for i := 0; i <= 5; i++ {
+		qdbus := startRegisterQuic("")
+		defer qdbus.Close()
+	}
+
+	time.Sleep(1000 * time.Second)
+}
+
+func RandStringBytes(n int) string {
+	const signs = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = signs[rand.Intn(len(signs))]
+	}
+	return string(b)
 }
 
 func startRegisterQuic(connID string) *QuicDbus {
-	qdbus := NewQuicDbus(0, false, connID)
+	if connID == "" {
+		connID = RandStringBytes(8)
+	}
+	qdbus := NewQuicDbus(0, false, connID, fmt.Sprintf("17-ffaa:1:f12,127.0.0.1:%d", 1000+rand.Intn(1000)))
 	if err := qdbus.OpenSessionBus(); err != nil {
 		panic(err)
 	}
