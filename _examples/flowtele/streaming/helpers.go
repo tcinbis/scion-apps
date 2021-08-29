@@ -17,10 +17,12 @@ import (
 
 func CWNDPathExplorerHelper(selector *pan.MultiReplySelector, serverStats *shttp.SHTTPStats) {
 	go func() {
+		var clients []pan.UdpAddrKey
 		for {
-			time.Sleep(10 * time.Second)
+			time.Sleep(5 * time.Second)
+			clients = selector.RemoteClients()
 			for _, p := range pan.PathsWithoutCwnd() {
-				for _, rAddrKey := range selector.RemoteClients() {
+				for idx, rAddrKey := range clients {
 					if p.Destination != rAddrKey.IA {
 						// client is not reachable via path p
 						continue
@@ -28,8 +30,12 @@ func CWNDPathExplorerHelper(selector *pan.MultiReplySelector, serverStats *shttp
 
 					selector.SetFixedPath(rAddrKey.ToUDPAddr(), p)
 					if entry := serverStats.GetHTTPStatusByRemoteAddr(rAddrKey.ToUDPAddr()); entry != nil {
+						entry.Session.MigrateConnection()
 						entry.LastCwnd.Clear()
 					}
+					// we found a client who's path we change so remove it and move on
+					clients = append(clients[:idx], clients[idx+1:]...)
+					break
 				}
 			}
 		}
@@ -52,7 +58,7 @@ func CWNDUpdateHelper(selector *pan.MultiReplySelector, serverStats *shttp.SHTTP
 			}
 			selector.UpdateRemoteCwnd(rAddr, uint64(b.LastCwnd.Mean()))
 		}
-		fmt.Printf("Paths without CWND measurement: %v\n", pan.PathsWithoutCwnd())
+		log.Printf("Paths without CWND measurement: %v\n", pan.PathsWithoutCwnd())
 	}
 }
 
