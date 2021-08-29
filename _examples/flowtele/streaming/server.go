@@ -1,11 +1,21 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/flowtele"
@@ -16,17 +26,6 @@ import (
 	"github.com/scionproto/scion/go/lib/addr"
 	slog "github.com/scionproto/scion/go/lib/log"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"io"
-	"log"
-	"net"
-	"net/http"
-	"os"
-	"path"
-	"path/filepath"
-	"sort"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -95,7 +94,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 	if *useScion {
 		newSessionCallback = func(ctx context.Context, connID string, session quic.FlowTeleSession) error {
 			fmt.Printf("Starting DBUS for: %s\n", connID)
-			qdbus := flowteledbus.NewQuicDbusCtx(ctx, 0, true, connID)
+			qdbus := flowteledbus.NewQuicDbusCtx(ctx, 0, true, connID, session.RemoteAddr().String())
 			qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
 			qdbus.Reinit(0, true, connID)
 			qdbus.Session = session
@@ -269,61 +268,12 @@ func startSCIONServer(handler http.Handler) {
 		fmt.Println("Error casting HTTP Server stats.")
 	}
 
-	go func() {
-		for {
-			time.Sleep(5 * time.Second)
-			for _, b := range serverStats.All() {
-				rAddr, ok := b.Remote.(pan.UDPAddr)
-				if !ok {
-					fmt.Println("Error casting address to UDPAddr")
-					continue
-				}
-				selector.UpdateRemoteCwnd(rAddr, uint64(b.LastCwnd.Mean()))
-			}
-			fmt.Printf("Paths without CWND measurement: %v\n", pan.PathsWithoutCwnd())
-		}
-	}()
-
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
-			for _, p := range pan.PathsWithoutCwnd() {
-				for _, rAddrKey := range selector.RemoteClients() {
-					if p.Destination != rAddrKey.IA {
-						continue
-					}
-					selector.SetFixedPath(rAddrKey.ToUDPAddr(), p)
-					if entry := serverStats.GetHTTPStatusByRemoteAddr(rAddrKey.ToUDPAddr()); entry != nil {
-						entry.LastCwnd.Clear()
-					}
-				}
-			}
-		}
-	}()
-
+	go CWNDPathExplorerHelper(selector, serverStats)
+	go CWNDUpdateHelper(selector, serverStats)
+	go StatsExporterHelper(selector, serverStats)
 	if *interactivePathChanges {
-		go func(sel *pan.MultiReplySelector) {
-			for {
-				remote, ok := sel.AskPathChanges()
-				if ok {
-					s, ok := server.Stats.(*shttp.SHTTPStats)
-					if !ok {
-						fmt.Println("Error casting HTTP Server stats.")
-					}
-					s.GetSessionByRemoteAddr(remote).MigrateConnection()
-				}
-				time.Sleep(1 * time.Second)
-			}
-		}(selector)
+		go InteractivePathsHelper(selector, serverStats)
 	}
-
-	go func(sel *pan.MultiReplySelector) {
-		for {
-			statsExporter(server.Stats.All(), sel)
-			time.Sleep(5 * time.Second)
-		}
-	}(selector)
-
 	initMonitorPanMappings(selector)
 
 	for {
@@ -341,42 +291,6 @@ func startSCIONServer(handler http.Handler) {
 		}
 		time.Sleep(1 * time.Second)
 	}
-}
-
-func statsExporter(httpStats []*http3.StatusEntry, panStats *pan.MultiReplySelector) {
-	writeJson(httpStats, "http.json")
-	writeJson(panStats, "pan.json")
-}
-
-func writeJson(obj interface{}, filename string) {
-	var res []byte
-	var err error
-
-	if eObj, ok := obj.(interface{ Export() ([]byte, error) }); ok {
-		res, err = eObj.Export()
-	} else {
-		res, err = json.MarshalIndent(obj, "", "\t")
-	}
-	check(err)
-
-	currDir, err := os.Getwd()
-	if err != nil {
-		log.Println(err)
-		os.Exit(-1)
-	}
-
-	f, err := os.Create(path.Join(currDir, filename))
-	check(err)
-	defer f.Close()
-
-	check(f.Truncate(0))
-	_, err = f.Seek(0, 0)
-	check(err)
-
-	w := bufio.NewWriter(f)
-	_, err = w.Write(res)
-	check(err)
-	w.Flush()
 }
 
 func initMonitorPanMappings(sel *pan.MultiReplySelector) {
@@ -437,57 +351,6 @@ func main() {
 
 }
 
-// withLogger returns a handler that logs requests (after completion) in a simple format:
-//	  <time> <remote address> "<request>" <status code> <size of reply>
-func withLogger(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wrec := &recordingResponseWriter{ResponseWriter: w}
-		h.ServeHTTP(wrec, r)
-
-		log.Printf("%s \"%s %s %s/SCION\" %d %d\n",
-			r.RemoteAddr,
-			r.Method, r.URL, r.Proto,
-			wrec.status, wrec.bytes)
-	})
-}
-
-type recordingResponseWriter struct {
-	http.ResponseWriter
-	status int
-	bytes  int
-}
-
-func (r *recordingResponseWriter) WriteHeader(statusCode int) {
-	r.status = statusCode
-	r.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (r *recordingResponseWriter) Write(b []byte) (int, error) {
-	if r.status == 0 {
-		r.status = http.StatusOK
-	}
-	r.bytes += len(b)
-	return r.ResponseWriter.Write(b)
-}
-
-func checkSession(sess *quic.EarlySession) *quic.Session {
-	qs, ok := (*sess).(quic.Session)
-	if !ok {
-		fmt.Println("Returned session is not quic sessions")
-		return nil
-	}
-	return &qs
-}
-
-func checkFlowTeleSession(sess *quic.Session) *quic.FlowTeleSession {
-	fs, ok := (*sess).(quic.FlowTeleSession)
-	if !ok {
-		fmt.Println("Returned session is not flowtele sessions")
-		return nil
-	}
-	return &fs
-}
-
 // Check just ensures the error is nil, or complains and quits
 func check(e error) {
 	if e != nil {
@@ -502,7 +365,7 @@ func handleNewPanPath(sel *pan.MultiReplySelector, filepath string) {
 		check(err)
 	}
 	for _, elem := range mapping {
-		fmt.Println(elem)
+		fmt.Printf("$$$$ Element remote: %s, path element: %s\n", elem.Remote.String(), elem.PathElement)
 		path := sel.PathFromElement(elem.Remote, elem.PathElement)
 		if path == nil {
 			log.Printf("Couldn't find path for remote: %s and path element: %s", elem.Remote.String(), elem.PathElement)
@@ -514,6 +377,7 @@ func handleNewPanPath(sel *pan.MultiReplySelector, filepath string) {
 
 type PanMapping struct {
 	Remote      pan.UDPAddr `json:"remote"`
+	ClientID    string      `json:"client_id"`
 	PathElement string      `json:"path_element"`
 }
 
