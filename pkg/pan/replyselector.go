@@ -18,7 +18,7 @@ import (
 )
 
 // TODO: Increase timeout to something more realistic
-const remoteTimeout = 10 * time.Second
+const remoteTimeout = 20 * time.Second
 
 // ReplySelector selects the reply path for WriteTo in a listener.
 type ReplySelector interface {
@@ -88,10 +88,6 @@ func NewMultiReplySelector(ctx context.Context) *MultiReplySelector {
 	return selector
 }
 
-func (s *MultiReplySelector) Start() {
-	go s.run()
-}
-
 func (s *MultiReplySelector) UpdateRemoteCwnd(addr UDPAddr, cwnd uint64) {
 	ukey := makeKey(addr)
 	s.mtx.RLock()
@@ -99,14 +95,14 @@ func (s *MultiReplySelector) UpdateRemoteCwnd(addr UDPAddr, cwnd uint64) {
 
 	rEntry, ok := s.Remotes[ukey]
 	if !ok {
-		fmt.Printf("Unkown remote with key: %s\n", ukey.String())
+		log.Printf("CWND Update: Unkown remote with key: %s\n", ukey.String())
 		return
 	}
 	currentPath := rEntry.paths[0]
 	if rEntry.fixedPath != nil {
 		currentPath = rEntry.fixedPath
 	}
-	fmt.Printf("Register CWND %d on path: %s\n", cwnd, currentPath.String())
+	//log.Printf("Register CWND %d on path: %s\n", cwnd, currentPath.String())
 	go stats.RegisterCwnd(currentPath, cwnd)
 }
 
@@ -120,14 +116,14 @@ func (s *MultiReplySelector) RemoteClients() []UdpAddrKey {
 }
 
 func (s *MultiReplySelector) OnPathDown(PathFingerprint, PathInterface) {
-	fmt.Println("PathDown event missed/ignored in DefaultReplySelector")
+	log.Println("PathDown event missed/ignored in DefaultReplySelector")
 }
 
 func (s *MultiReplySelector) SetFixedPath(dst UDPAddr, path *Path) {
 	ukey := makeKey(dst)
 
 	if path == nil {
-		fmt.Println("Trying to set fixed path which is NIL!")
+		log.Println("Trying to set fixed path which is NIL!")
 		return
 	}
 
@@ -135,12 +131,12 @@ func (s *MultiReplySelector) SetFixedPath(dst UDPAddr, path *Path) {
 	defer s.mtx.Unlock()
 	r, ok := s.Remotes[ukey]
 	if !ok {
-		fmt.Printf("No remote for key %s found\n", ukey.String())
+		log.Printf("No remote for key %s found\n", ukey.String())
 		return
 	}
 	r.SetFixedPath(path)
 	s.Remotes[ukey] = r
-	fmt.Printf("Set path %s for %s\n", path.String(), ukey.String())
+	log.Printf("Set path %s for %s\n", path.String(), ukey.String())
 }
 
 func (s *MultiReplySelector) ClearFixedPath(dst UDPAddr) {
@@ -149,7 +145,7 @@ func (s *MultiReplySelector) ClearFixedPath(dst UDPAddr) {
 	defer s.mtx.Unlock()
 	r, ok := s.Remotes[ukey]
 	if !ok {
-		fmt.Printf("No remote for key %s found\n", ukey.String())
+		log.Printf("No remote for key %s found\n", ukey.String())
 	}
 	r.ClearFixedPath()
 	s.Remotes[ukey] = r
@@ -199,7 +195,7 @@ func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	defer s.mtx.RUnlock()
 	r, ok := s.Remotes[ukey]
 	if !ok {
-		fmt.Println("!!!!Unknown destination!!!!")
+		log.Println("!!!!Unknown destination!!!!")
 		return nil
 	}
 
@@ -297,7 +293,7 @@ func (s *MultiReplySelector) updateRemotes(src, dst UDPAddr, path *Path) {
 					}
 				}
 
-				fmt.Printf("Deleting %s from remotes after expiry\n", ksrc.String())
+				log.Printf("Deleting %s from remotes after expiry\n", ksrc.String())
 				return
 			default:
 				time.Sleep(5 * time.Second)
@@ -325,7 +321,7 @@ func (s *MultiReplySelector) updateIA(src, dst UDPAddr, path *Path) {
 		// we got a new IA -> subscribe for updates
 		paths, err := pool.subscribe(s.ctx, kSrc.IA, s)
 		if err != nil {
-			fmt.Printf("Error subscribing to pool updates for %s\n", kSrc.IA.String())
+			log.Printf("Error subscribing to pool updates for %s\n", kSrc.IA.String())
 			os.Exit(-1)
 		}
 
@@ -348,7 +344,7 @@ func (s *MultiReplySelector) AskPathChanges() (UDPAddr, bool) {
 	if len(s.Remotes) < 1 {
 		return UDPAddr{}, false
 	}
-	fmt.Print("Do you want to perform path selection for remotes? [y/N]: ")
+	log.Print("Do you want to perform path selection for remotes? [y/N]: ")
 	scanner := bufio.NewScanner(os.Stdin)
 
 	scanner.Scan()
@@ -358,46 +354,31 @@ func (s *MultiReplySelector) AskPathChanges() (UDPAddr, bool) {
 	}
 	remote, err := s.chooseRemoteInteractive()
 	if err != nil {
-		fmt.Printf("Error choosing remote: %v \n", err)
+		log.Printf("Error choosing remote: %v \n", err)
 		return UDPAddr{}, false
 	}
 	path, err := s.choosePathInteractive(remote)
 	if err != nil {
-		fmt.Printf("Error choosing path: %v \n", err)
+		log.Printf("Error choosing path: %v \n", err)
 		return UDPAddr{}, false
 	}
 	s.SetFixedPath(remote.ToUDPAddr(), path)
 	return remote.ToUDPAddr(), true
 }
 
-func (s *MultiReplySelector) run() {
-	for {
-		select {
-		case <-s.ctx.Done():
-			s.ticker.Stop()
-			fmt.Println("MultiReplySelector stopping.")
-			os.Exit(1)
-		case <-s.ticker.C:
-			s.AskPathChanges()
-		default:
-			time.Sleep(5 * time.Second)
-		}
-	}
-}
-
 func (s *MultiReplySelector) chooseRemoteInteractive() (*UdpAddrKey, error) {
-	fmt.Printf("Available remotes: \n")
+	log.Printf("Available remotes: \n")
 	indexToRemote := make(map[int]UdpAddrKey)
 	i := 0
 	for remote, _ := range s.Remotes {
-		fmt.Printf("[%2d] %s\n", i, remote.String())
+		log.Printf("[%2d] %s\n", i, remote.String())
 		indexToRemote[i] = remote
 		i++
 	}
 
 	var selectedRemote UdpAddrKey
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Printf("Choose remote: ")
+	log.Printf("Choose remote: ")
 	scanner.Scan()
 	remoteIndexStr := scanner.Text()
 	remoteIndex, err := strconv.Atoi(remoteIndexStr)
@@ -408,21 +389,21 @@ func (s *MultiReplySelector) chooseRemoteInteractive() (*UdpAddrKey, error) {
 	}
 
 	re := regexp.MustCompile(`\d{1,4}-([0-9a-f]{1,4}:){2}[0-9a-f]{1,4}`)
-	fmt.Printf("Using remote:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote.String()), color.Cyan))
+	log.Printf("Using remote:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote.String()), color.Cyan))
 	return &selectedRemote, nil
 }
 
 func (s *MultiReplySelector) choosePathInteractive(remote *UdpAddrKey) (path *Path, err error) {
 	paths := s.IaPaths[remote.IA]
 
-	fmt.Printf("Available paths to %s\n", remote.String())
+	log.Printf("Available paths to %s\n", remote.String())
 	for i, path := range paths {
-		fmt.Printf("[%2d] %s\n", i, fmt.Sprintf("%s", path))
+		log.Printf("[%2d] %s\n", i, fmt.Sprintf("%s", path))
 	}
 
 	var selectedPath *Path
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Printf("Choose path: ")
+	log.Printf("Choose path: ")
 	scanner.Scan()
 	pathIndexStr := scanner.Text()
 	pathIndex, err := strconv.Atoi(pathIndexStr)
@@ -433,7 +414,7 @@ func (s *MultiReplySelector) choosePathInteractive(remote *UdpAddrKey) (path *Pa
 	}
 
 	re := regexp.MustCompile(`\d{1,4}-([0-9a-f]{1,4}:){2}[0-9a-f]{1,4}`)
-	fmt.Printf("Using path:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedPath), color.Cyan))
+	log.Printf("Using path:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedPath), color.Cyan))
 	return selectedPath, nil
 }
 
@@ -442,6 +423,7 @@ func (s *MultiReplySelector) Close() error {
 	return nil
 }
 
+// Export is used by stats exporters to lock the selector to be able to export it as JSON file
 func (s *MultiReplySelector) Export() ([]byte, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -456,7 +438,7 @@ func (s *MultiReplySelector) Export() ([]byte, error) {
 func (s *MultiReplySelector) refresh(dst addr.IA, paths []*Path) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	fmt.Printf("Received update for %s\n", dst.String())
+	log.Printf("Received update for %s\n", dst.String())
 	s.IaPaths[dst] = paths
 }
 
@@ -484,7 +466,7 @@ func (s *MultiReplySelector) ActiveRemotes() {
 			sb.WriteString(fmt.Sprintf("%s on path: %s \n", rem.String(), path.String()))
 		}
 	}
-	fmt.Println(sb.String())
+	log.Println(sb.String())
 }
 
 func (s *MultiReplySelector) AvailablePaths() string {
@@ -588,11 +570,11 @@ func (p *pathsMRU) insert(path *Path, maxEntries int) {
 	}
 }
 
-func (p *pathsMRU) string() string {
-	var sb strings.Builder
-	for _, path := range *p {
-		path.FetchMetadata()
-		sb.WriteString(path.String())
-	}
-	return sb.String()
-}
+//func (p *pathsMRU) string() string {
+//	var sb strings.Builder
+//	for _, path := range *p {
+//		path.FetchMetadata()
+//		sb.WriteString(path.String())
+//	}
+//	return sb.String()
+//}
