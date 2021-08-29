@@ -93,7 +93,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 	var newSessionCallback func(ctx context.Context, connID string, session quic.FlowTeleSession) error
 	if *useScion {
 		newSessionCallback = func(ctx context.Context, connID string, session quic.FlowTeleSession) error {
-			fmt.Printf("Starting DBUS for: %s\n", connID)
+			log.Printf("Starting DBUS for: %s\n", connID)
 			qdbus := flowteledbus.NewQuicDbusCtx(ctx, 0, true, connID, session.RemoteAddr().String())
 			qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
 			qdbus.Reinit(0, true, connID)
@@ -138,7 +138,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 }
 
 func startTCPServer(handler http.Handler) {
-	fmt.Printf("Using QUIC\n")
+	log.Printf("Using QUIC\n")
 	serverAddr := fmt.Sprintf("%s:%d", *ip, *port)
 
 	if *certDir == "" {
@@ -221,7 +221,7 @@ func startTCPServer(handler http.Handler) {
 }
 
 func startSCIONServer(handler http.Handler) {
-	fmt.Printf("Using SCION\n")
+	log.Printf("Using SCION\n")
 	serverAddr := fmt.Sprintf("%s:%d", *ip, *port)
 
 	stats := shttp.NewSHTTPStats()
@@ -234,12 +234,6 @@ func startSCIONServer(handler http.Handler) {
 
 	server := shttp.NewScionServer(serverAddr, handler, nil, getQuicConf(stats, *csvFilePrefix, pan.LocalIA(), addr.IA{}))
 	server.Server.Stats = stats
-	//server.Server.SetNewStreamCallback(func(sess *quic.EarlySession, strID quic.StreamID) {
-	//	fmt.Printf("%v %v\n", time.Now(), sess)
-	//	fmt.Printf("%v: Session to %s open.\n", time.Now(), (*sess).RemoteAddr())
-	//	fmt.Printf("%v %v\n", time.Now(), server.Server.GetSessions())
-	//	//(*checkFlowTeleSession(checkSession(sess))).SetFixedRate(500 * KByte)
-	//})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -343,6 +337,10 @@ func main() {
 	filePath := filepath.Join(*dataDir)
 	fmt.Println(filePath)
 	handler := http.FileServer(http.Dir(filePath))
+
+	//p := profile.Start(profile.CPUProfile, profile.ProfilePath("."))
+	//defer p.Stop()
+
 	if *useScion {
 		startSCIONServer(handler)
 	} else {
@@ -365,7 +363,6 @@ func handleNewPanPath(sel *pan.MultiReplySelector, filepath string) {
 		check(err)
 	}
 	for _, elem := range mapping {
-		fmt.Printf("$$$$ Element remote: %s, path element: %s\n", elem.Remote.String(), elem.PathElement)
 		path := sel.PathFromElement(elem.Remote, elem.PathElement)
 		if path == nil {
 			log.Printf("Couldn't find path for remote: %s and path element: %s", elem.Remote.String(), elem.PathElement)
