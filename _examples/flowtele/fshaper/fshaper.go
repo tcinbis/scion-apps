@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"sync"
+
 	"github.com/lucas-clemente/quic-go"
 	flowteledbus "github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus"
 	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
 	"github.com/scionproto/scion/go/lib/log"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"net"
-	"os"
-	"sync"
 )
 
 const (

@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
-	"github.com/scionproto/scion/go/lib/addr"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
+	"github.com/scionproto/scion/go/lib/addr"
 
 	"github.com/scionproto/scion/go/lib/log"
 )

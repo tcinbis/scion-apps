@@ -169,12 +169,12 @@ func (s *MultiReplySelector) PathFromElement(dst UDPAddr, pElem string) *Path {
 	}
 	bottleneckEgressInterface, err := PathInterfaceFromString(splitted[0])
 	if err != nil {
-		log.Println(err)
+		log.Printf("PathInterface error: %v", err)
 		return nil
 	}
 	bottleneckIngressInterface, err := PathInterfaceFromString(splitted[1])
 	if err != nil {
-		log.Println(err)
+		log.Printf("PathInterface error: %v", err)
 		return nil
 	}
 

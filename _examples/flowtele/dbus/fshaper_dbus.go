@@ -1,9 +1,10 @@
 package flowteledbus
 
 import (
-	"github.com/godbus/dbus/v5"
 	"strings"
 	"time"
+
+	"github.com/godbus/dbus/v5"
 )
 
 const (

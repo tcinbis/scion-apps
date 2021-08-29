@@ -2,11 +2,12 @@ package flowteledbus
 
 import (
 	"fmt"
-	"github.com/godbus/dbus/v5"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/godbus/dbus/v5"
 )
 
 const (

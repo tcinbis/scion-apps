@@ -4,9 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
-	"github.com/netsec-ethz/scion-apps/pkg/appnet"
-	"gopkg.in/alecthomas/kingpin.v2"
 	"io"
 	"net"
 	"os"
@@ -14,6 +11,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
+	"github.com/netsec-ethz/scion-apps/pkg/appnet"
+	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/lucas-clemente/quic-go"
 

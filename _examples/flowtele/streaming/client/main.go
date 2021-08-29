@@ -4,8 +4,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/netsec-ethz/scion-apps/pkg/shttp"
-	"golang.org/x/net/html"
 	"io"
 	"io/ioutil"
 	"log"
@@ -14,6 +12,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/netsec-ethz/scion-apps/pkg/shttp"
+	"golang.org/x/net/html"
 )
 
 const (

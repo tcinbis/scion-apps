@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/godbus/dbus/v5"
-	flowteledbus "github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus"
 	"math/rand"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/godbus/dbus/v5"
+	flowteledbus "github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus"
 )
 
 type AthenaStruct struct {

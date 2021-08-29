@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	sd "github.com/scionproto/scion/go/lib/sciond"
 	"os"
 	"regexp"
 	"strings"
+
+	sd "github.com/scionproto/scion/go/lib/sciond"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"

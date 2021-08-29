@@ -3,6 +3,9 @@ package utils
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
+
 	"github.com/lucas-clemente/quic-go"
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/log"
@@ -10,8 +13,6 @@ import (
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/snet/squic"
 	"github.com/scionproto/scion/go/lib/sock/reliable"
-	"net"
-	"os"
 )
 
 func SetAddrIA(s string) (t *addr.IA) {

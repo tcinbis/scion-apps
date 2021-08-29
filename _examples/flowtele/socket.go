@@ -1,16 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
+
 	flowteledbus "github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus"
 	"github.com/netsec-ethz/scion-apps/_examples/flowtele/utils"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/pkg/profile"
-	"io"
+
 	"net"
 	"os"
 	"os/signal"
@@ -300,7 +300,7 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 	// start dbus
 	log.Info(fmt.Sprintf("Starting DBUS"))
 	peerString := utils.CleanStringForFS(remoteAddr.String())
-	qdbus := flowteledbus.NewQuicDbus(flowId, applyControl, peerString)
+	qdbus := flowteledbus.NewQuicDbus(flowId, applyControl, peerString, remoteAddr.String())
 	qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
 
 	log.Info(fmt.Sprintf("Configuring QUIC"))
@@ -422,24 +422,4 @@ func checkFlowTeleSession(s quic.Session) quic.FlowTeleSession {
 		panic("Returned session is not flowtele sessions")
 	}
 	return fs
-}
-
-type bufferedWriteCloser struct {
-	*bufio.Writer
-	io.Closer
-}
-
-// NewBufferedWriteCloser creates an io.WriteCloser from a bufio.Writer and an io.Closer
-func NewBufferedWriteCloser(writer *bufio.Writer, closer io.Closer) io.WriteCloser {
-	return &bufferedWriteCloser{
-		Writer: writer,
-		Closer: closer,
-	}
-}
-
-func (h bufferedWriteCloser) Close() error {
-	if err := h.Writer.Flush(); err != nil {
-		return err
-	}
-	return h.Closer.Close()
 }

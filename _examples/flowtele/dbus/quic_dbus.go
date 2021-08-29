@@ -3,8 +3,9 @@ package flowteledbus
 import (
 	"context"
 	"fmt"
-	"github.com/godbus/dbus/v5/prop"
 	"time"
+
+	"github.com/godbus/dbus/v5/prop"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/lucas-clemente/quic-go"

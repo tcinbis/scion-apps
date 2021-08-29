@@ -3,12 +3,13 @@ package flowteledbus
 import (
 	"context"
 	"fmt"
-	"github.com/lucas-clemente/quic-go/flowtele"
-	"github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus/datalogger"
-	"github.com/scionproto/scion/go/lib/addr"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/lucas-clemente/quic-go/flowtele"
+	"github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus/datalogger"
+	"github.com/scionproto/scion/go/lib/addr"
 )
 
 func GetFlowTeleSignalInterface(loggerCtx context.Context, qdbus *QuicDbus, connID string, localAddr, remoteAddr string, useScion bool, localIA, remoteIA addr.IA, csvPrefix string, waitGroup *sync.WaitGroup) *flowtele.FlowTeleSignal {

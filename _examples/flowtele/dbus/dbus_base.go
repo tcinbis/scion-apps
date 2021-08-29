@@ -2,11 +2,12 @@ package flowteledbus
 
 import (
 	"fmt"
-	"github.com/godbus/dbus/v5/prop"
-	"golang.org/x/net/context"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/godbus/dbus/v5/prop"
+	"golang.org/x/net/context"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
