@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/netsec-ethz/scion-apps/_examples/flowtele/dbus/datalogger"
+	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"io"
 	"io/ioutil"
 	"log"
@@ -11,6 +14,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/netsec-ethz/scion-apps/pkg/shttp"
@@ -71,7 +75,12 @@ func main() {
 		return
 	}
 
+	ctx, cancelLogger := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	bwLogger := datalogger.CreateBandwidthLogger(ctx, "bw", &wg)
+
 	bufSize := 10000000
+	localIA := pan.LocalIA().String()
 	for _, l := range links {
 		if strings.HasSuffix(l, *fileEnding) {
 			// download it!
@@ -79,7 +88,8 @@ func main() {
 
 			resp, err := c.Get(query)
 			if err != nil {
-				log.Fatal("GET request failed: ", err)
+				log.Printf("GET request failed: %v", err)
+				break
 			}
 
 			totalTime, totalBytes := 0.0, 0
@@ -88,18 +98,24 @@ func main() {
 				tStart := time.Now()
 				n, err := io.ReadFull(resp.Body, buf)
 				tDur := time.Now().Sub(tStart).Seconds()
-				if err == io.EOF {
+				if err != nil {
+					if err == io.EOF {
+						// Finished streaming the file. Continue to next link.
+						break
+					}
+					fmt.Printf("Error while receiving: %v\n", err)
 					break
 				}
-				fmt.Printf("Current speed: %.2f MBit/s\n", float64(bufSize)*Byte/tDur/MBit)
+				currentBW := float64(bufSize) * Byte / tDur / MBit
+				bwLogger.Send(&datalogger.BandwidthData{
+					LocalAddr:   localIA,
+					Timestamp:   time.Now(),
+					BWPerSecond: currentBW,
+				})
+				fmt.Printf("Current speed: %.2f MBit/s\n", currentBW)
 				totalTime += tDur
 				totalBytes += n
 				if err == io.ErrUnexpectedEOF {
-					break
-				}
-
-				if err != nil {
-					fmt.Printf("Error while receiving: %v\n", err)
 					break
 				}
 			}
@@ -109,6 +125,8 @@ func main() {
 			time.Sleep(2 * time.Second)
 		}
 	}
+	cancelLogger()
+	wg.Wait()
 }
 
 func getLinks(body io.Reader) []string {

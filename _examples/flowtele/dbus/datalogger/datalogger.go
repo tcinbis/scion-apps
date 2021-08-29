@@ -40,6 +40,12 @@ type LostRatioData struct {
 	LostRatio float64
 }
 
+type BandwidthData struct {
+	LocalAddr   string
+	Timestamp   time.Time
+	BWPerSecond float64
+}
+
 type DbusDataLogger struct {
 	ctx        context.Context
 	writerChan chan channelData
@@ -143,6 +149,10 @@ func (c *LostRatioData) Strings() []string {
 	return []string{c.FlowID, strconv.Itoa(int(UnixMicroseconds(c.Timestamp))), strconv.FormatFloat(c.LostRatio, 'f', 5, 64)}
 }
 
+func (c *BandwidthData) Strings() []string {
+	return []string{c.LocalAddr, strconv.Itoa(int(UnixMicroseconds(c.Timestamp))), strconv.FormatFloat(c.BWPerSecond, 'f', 5, 64)}
+}
+
 func UnixMicroseconds(t time.Time) int64 {
 	return t.UnixNano() / 1e3
 }
@@ -211,4 +221,17 @@ func CreateDataLoggers(ctx context.Context, useScion bool, csvPrefix string, wai
 	log.Info(fmt.Sprintf("Data logger complete"))
 
 	return srttLogger, lostLogger, cwndLogger
+}
+
+func CreateBandwidthLogger(ctx context.Context, csvPrefix string, waitGroup *sync.WaitGroup) *DbusDataLogger {
+	bwLogger := NewDbusDataLogger(
+		ctx,
+		fmt.Sprintf("%s-samples-%d.csv", csvPrefix, time.Now().Unix()),
+		[]string{"local", "microTimestamp", "BWBytesPerSecond"},
+		[]string{},
+		waitGroup,
+	)
+
+	bwLogger.Run()
+	return bwLogger
 }
