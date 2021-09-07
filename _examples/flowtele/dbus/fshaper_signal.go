@@ -14,7 +14,7 @@ func CreateFshaperDbusSignal(s *dbus.Signal) DbusSignal {
 	case "reportRtt":
 		return createReportDbusSignalStringIDUint32Uint32(Rtt, s.Body[0].(string), time.Unix(int64(s.Body[1].(uint64)), int64(s.Body[2].(uint32))), s.Body[3].(uint32), 0)
 	case "reportLost":
-		return createReportDbusSignalStringIDUint32Uint32(Lost, s.Body[0].(string), time.Unix(int64(s.Body[1].(uint64)), int64(s.Body[2].(uint32))), s.Body[3].(uint32), 0)
+		return createReportDbusSignalStringIDUint64Uint32(Lost, s.Body[0].(string), time.Unix(int64(s.Body[1].(uint64)), int64(s.Body[2].(uint32))), s.Body[3].(uint64), 0)
 	case "reportCwnd":
 		return createReportDbusSignalStringIDUint32Int32Uint32(Cwnd, s.Body[0].(string), time.Unix(int64(s.Body[1].(uint64)), int64(s.Body[2].(uint32))), s.Body[3].(uint32), s.Body[4].(int32), s.Body[5].(uint32))
 	default:
@@ -29,7 +29,7 @@ func allFshaperDbusSignals() []introspect.Signal {
 		case Rtt:
 			fallthrough
 		case Lost:
-			signals = append(signals, createReportDbusSignalStringIDUint32Uint32(t, "", time.Now(), 0, 0).IntrospectSignal())
+			signals = append(signals, createReportDbusSignalStringIDUint64Uint32(t, "", time.Now(), 0, 0).IntrospectSignal())
 		case Cwnd:
 			signals = append(signals, createReportDbusSignalStringIDUint32Int32Uint32(t, "", time.Now(), 0, 0, 0).IntrospectSignal())
 		}
