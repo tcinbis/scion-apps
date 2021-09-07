@@ -19,7 +19,7 @@ func CWNDPathExplorerHelper(selector *pan.MultiReplySelector, serverStats *shttp
 	go func() {
 		var clients []pan.UdpAddrKey
 		for {
-			time.Sleep(5 * time.Second)
+			time.Sleep(30 * time.Second)
 			clients = selector.RemoteClients()
 			for _, p := range pan.PathsWithoutCwnd() {
 				for idx, rAddrKey := range clients {
@@ -64,9 +64,11 @@ func CWNDUpdateHelper(selector *pan.MultiReplySelector, serverStats *shttp.SHTTP
 
 func InteractivePathsHelper(selector *pan.MultiReplySelector, serverStats *shttp.SHTTPStats) {
 	for {
-		remote, ok := selector.AskPathChanges()
-		if ok {
-			serverStats.GetSessionByRemoteAddr(remote).MigrateConnection()
+		remotes, ok := selector.AskPathChanges()
+		for _, remote := range remotes {
+			if ok {
+				serverStats.GetSessionByRemoteAddr(remote).MigrateConnection()
+			}
 		}
 		time.Sleep(1 * time.Second)
 	}
