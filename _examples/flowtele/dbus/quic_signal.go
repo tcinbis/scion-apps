@@ -10,8 +10,8 @@ func CreateQuicDbusSignalRtt(flow string, t time.Time, srtt_us uint32) DbusSigna
 	return createReportDbusSignalStringIDUint32(Rtt, flow, t, srtt_us)
 }
 
-func CreateQuicDbusSignalLost(flow string, t time.Time, newSsthresh uint32) DbusSignal {
-	return createReportDbusSignalStringIDUint32(Lost, flow, t, newSsthresh)
+func CreateQuicDbusSignalLost(flow string, t time.Time, newSsthresh uint64) DbusSignal {
+	return createReportDbusSignalStringIDUint64(Lost, flow, t, newSsthresh)
 }
 
 func CreateQuicDbusSignalLostRatio(flow string, t time.Time, ratio float64) DbusSignal {

@@ -50,10 +50,10 @@ func GetFlowTeleSignalInterface(loggerCtx context.Context, qdbus *QuicDbus, conn
 			return
 		}
 
-		if newSlowStartThreshold > math.MaxUint32 {
-			panic("newSlotStartThreshold does not fit in uint32")
+		if newSlowStartThreshold > math.MaxUint64 {
+			panic("newSlotStartThreshold does not fit in uint64")
 		}
-		dbusSignal := CreateQuicDbusSignalLost(connID, t, uint32(newSlowStartThreshold))
+		dbusSignal := CreateQuicDbusSignalLost(connID, t, newSlowStartThreshold)
 		if qdbus.ShouldSendSignal(dbusSignal) {
 			if err := qdbus.Send(dbusSignal); err != nil {
 				fmt.Printf("lost -> %d\n", qdbus.FlowId)

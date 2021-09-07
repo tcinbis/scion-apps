@@ -252,7 +252,8 @@ func (db *DbusBase) Register() error {
 }
 
 func (db *DbusBase) Log(formatString string, args ...interface{}) {
-	log.Printf(db.LogPrefix+": "+formatString+"\n", args...)
+	// TODO: Enable again for debugging!
+	//log.Printf(db.LogPrefix+": "+formatString+"\n", args...)
 }
 
 func (db *DbusBase) observeContext() {

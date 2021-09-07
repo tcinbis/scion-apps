@@ -24,15 +24,16 @@ type quicDbusMethodInterface struct {
 }
 
 func (qdbmi quicDbusMethodInterface) ApplyControl(dType uint32, beta float64, cwnd_adjust int64, cwnd_max_adjust int64, use_conservative_allocation bool) (bool, *dbus.Error) {
-	start := time.Now()
+	//start := time.Now()
 	qdb := qdbmi.quicDbus
 	session := qdb.Session
 	if !qdb.applyControl {
 		qdb.Log("not forwarding ApplyControl to QUIC flow %d", qdb.FlowId)
 		return false, nil
 	} else if session != nil {
+		//qdb.Log("apply control with: b:%f, cwnd_adj:%d max_cwnd:%d %t", beta, cwnd_adjust, cwnd_max_adjust, use_conservative_allocation)
 		ret := session.ApplyControl(beta, cwnd_adjust, cwnd_max_adjust, use_conservative_allocation)
-		qdb.Log("apply control returned %t at %v", ret, time.Now().Sub(start))
+		//qdb.Log("apply control returned %t at %v", ret, time.Now().Sub(start))
 		return ret, nil
 	} else {
 		qdb.Log("QUIC session not set, received ApplyControl(%d, %f, %d, %d, %t)", dType, beta, cwnd_adjust, cwnd_max_adjust, use_conservative_allocation)
@@ -155,7 +156,7 @@ func (qdb *QuicDbus) SendRttSignal(t time.Time, rtt uint32) error {
 	return qdb.Send(CreateQuicDbusSignalRtt(qdb.peer, t, rtt))
 }
 
-func (qdb *QuicDbus) SendLostSignal(t time.Time, newSsthresh uint32) error {
+func (qdb *QuicDbus) SendLostSignal(t time.Time, newSsthresh uint64) error {
 	return qdb.Send(CreateQuicDbusSignalLost(qdb.peer, t, newSsthresh))
 }
 

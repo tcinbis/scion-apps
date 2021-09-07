@@ -215,6 +215,7 @@ func invokeQuicSenders(closeChannel chan struct{}, errChannel chan error) {
 				localPort += index
 			}
 			if *useRemotePortRange {
+				log.Info("USING remote port range")
 				remotePort += index
 			}
 
@@ -298,9 +299,9 @@ func startQuicSender(localAddr *net.UDPAddr, remoteAddr *net.UDPAddr, flowId int
 	}()
 
 	// start dbus
-	log.Info(fmt.Sprintf("Starting DBUS"))
+	log.Info(fmt.Sprintf("Starting DBUS %s", fmt.Sprintf("%s,%s", remoteIAFromFlag.String(), remoteAddr.String())))
 	peerString := utils.CleanStringForFS(remoteAddr.String())
-	qdbus := flowteledbus.NewQuicDbus(flowId, applyControl, peerString, remoteAddr.String())
+	qdbus := flowteledbus.NewQuicDbus(flowId, applyControl, peerString, fmt.Sprintf("%s,%s", remoteIAFromFlag.String(), remoteAddr.String()))
 	qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
 
 	log.Info(fmt.Sprintf("Configuring QUIC"))

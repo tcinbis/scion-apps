@@ -123,6 +123,22 @@ func createReportDbusSignalStringIDUint32Uint32(t QuicDbusSignalType, flow strin
 	}}
 }
 
+func createReportDbusSignalStringIDUint64Uint32(t QuicDbusSignalType, flow string, time time.Time, v0 uint64, v1 uint32) DbusSignal {
+	return &dbusSignalStruct{t, struct {
+		Flow   string
+		TvSec  uint64
+		TvNsec uint32
+		V0     uint64
+		V1     uint32
+	}{
+		string(flow),
+		uint64(time.Unix()),
+		uint32(time.Nanosecond()),
+		v0,
+		v1,
+	}}
+}
+
 func createReportDbusSignalUint32Int32(t QuicDbusSignalType, flow int32, time time.Time, v0 uint32, v1 int32) DbusSignal {
 	return &dbusSignalStruct{t, struct {
 		Flow   int32
@@ -209,6 +225,20 @@ func createReportDbusSignalStringIDUint32(t QuicDbusSignalType, flow string, tim
 		TvSec  uint64
 		TvNsec uint32
 		V0     uint32
+	}{
+		string(flow),
+		uint64(time.Unix()),
+		uint32(time.Nanosecond()),
+		v0,
+	}}
+}
+
+func createReportDbusSignalStringIDUint64(t QuicDbusSignalType, flow string, time time.Time, v0 uint64) DbusSignal {
+	return &dbusSignalStruct{t, struct {
+		Flow   string
+		TvSec  uint64
+		TvNsec uint32
+		V0     uint64
 	}{
 		string(flow),
 		uint64(time.Unix()),

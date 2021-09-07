@@ -82,7 +82,7 @@ func startRegisterQuic(connID string) *QuicDbus {
 }
 
 func startRegisterFshaper(connID string) *FshaperDbus {
-	fdbus := NewFshaperDbus(1, connID)
+	fdbus := NewFshaperDbus(connID, true, -1)
 
 	// dbus setup
 	if err := fdbus.OpenSessionBus(); err != nil {
