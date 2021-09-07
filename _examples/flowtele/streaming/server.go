@@ -10,10 +10,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -95,7 +97,7 @@ func getQuicConf(stats http3.HTTPStats, loggingPrefix string, localIA, remoteIA 
 		newSessionCallback = func(ctx context.Context, connID string, session quic.FlowTeleSession) error {
 			log.Printf("Starting DBUS for: %s\n", connID)
 			qdbus := flowteledbus.NewQuicDbusCtx(ctx, 0, true, connID, session.RemoteAddr().String())
-			qdbus.SetMinIntervalForAllSignals(10 * time.Millisecond)
+			qdbus.SetMinIntervalForAllSignals(5 * time.Millisecond)
 			qdbus.Reinit(0, true, connID)
 			qdbus.Session = session
 			if err := qdbus.OpenSessionBus(); err != nil {
@@ -220,7 +222,7 @@ func startTCPServer(handler http.Handler) {
 	//http.ListenAndServe(fmt.Sprintf("%s:%d", *ip, *port), nil)
 }
 
-func startSCIONServer(handler http.Handler) {
+func startSCIONServer(ctx context.Context, handler http.Handler) {
 	log.Printf("Using SCION\n")
 	serverAddr := fmt.Sprintf("%s:%d", *ip, *port)
 
@@ -268,26 +270,20 @@ func startSCIONServer(handler http.Handler) {
 	if *interactivePathChanges {
 		go InteractivePathsHelper(selector, serverStats)
 	}
-	initMonitorPanMappings(selector)
+	initMonitorPanMappings(ctx, selector)
 
+loop:
 	for {
-		allData := server.Stats.All()
-		sort.Slice(allData, func(i, j int) bool {
-			return allData[i].ClientID > allData[j].ClientID
-		})
-		if len(allData) > 0 {
-			for _, entry := range allData {
-				fmt.Println(entry.String())
-				//sess := checkFlowTeleSession(&entry.Session)
-				//(*sess).SetFixedRate(1000 * KBit)
-			}
-			fmt.Println()
+		select {
+		case <-ctx.Done():
+			break loop
+		default:
+			time.Sleep(500 * time.Millisecond)
 		}
-		time.Sleep(1 * time.Second)
 	}
 }
 
-func initMonitorPanMappings(sel *pan.MultiReplySelector) {
+func initMonitorPanMappings(ctx context.Context, sel *pan.MultiReplySelector) {
 	callback := func(s string) {
 		handleNewPanPath(sel, s)
 	}
@@ -295,21 +291,21 @@ func initMonitorPanMappings(sel *pan.MultiReplySelector) {
 		fmt.Println("Can't init file watch without mapping dir!")
 		return
 	}
-	configureFileWatch(*mappingDir, "pan-paths.json", callback)
+	configureFileWatch(ctx, *mappingDir, "pan-paths.json", callback)
 }
 
-func configureFileWatch(watchDir, filename string, writeCallback func(string)) {
+func configureFileWatch(ctx context.Context, watchDir, filename string, writeCallback func(string)) {
 	// creates a new file watcher
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Println("ERROR", err)
+		fmt.Printf("Error creating filewatcher: %v\n", err)
 	}
-	defer watcher.Close()
-	done := make(chan bool)
-
 	go func() {
 		for {
 			select {
+			case <-ctx.Done():
+				watcher.Close()
+				return
 			case event := <-watcher.Events:
 				if strings.HasSuffix(event.Name, filename) {
 					if event.Op&fsnotify.Write == fsnotify.Write {
@@ -317,36 +313,47 @@ func configureFileWatch(watchDir, filename string, writeCallback func(string)) {
 						writeCallback(event.Name)
 					}
 				}
-			case err := <-watcher.Errors:
-				fmt.Println("ERROR", err)
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					fmt.Println("Watcher exiting. Was probably closed.")
+					return
+				}
+				fmt.Printf("Watcher error: %v\n", err)
+			default:
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 	}()
 
 	// out of the box fsnotify can watch a single file, or a single directory
 	if err := watcher.Add(watchDir); err != nil {
-		fmt.Println("ERROR", err)
+		fmt.Printf("Error adding dir to watcher: %v\n", err)
 	}
-	time.Sleep(100 * time.Second)
-	<-done
-
 }
 
 func main() {
 	shttp.SetupLogger()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		sig := <-sigs
+		fmt.Printf("Received signal: %v\n", sig)
+		cancel()
+	}()
+
 	filePath := filepath.Join(*dataDir)
 	fmt.Println(filePath)
 	handler := http.FileServer(http.Dir(filePath))
 
-	//p := profile.Start(profile.CPUProfile, profile.ProfilePath("."))
+	//p := profile.Start(profile.TraceProfile, profile.ProfilePath("."))
 	//defer p.Stop()
 
 	if *useScion {
-		startSCIONServer(handler)
+		startSCIONServer(ctx, handler)
 	} else {
 		startTCPServer(handler)
 	}
-
 }
 
 // Check just ensures the error is nil, or complains and quits
