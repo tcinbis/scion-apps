@@ -100,9 +100,10 @@ func (s *MultiReplySelector) UpdateRemoteCwnd(addr UDPAddr, cwnd uint64) {
 	}
 	currentPath := rEntry.paths[0]
 	if rEntry.fixedPath != nil {
+		log.Println("CWND Updater: using fixed path")
 		currentPath = rEntry.fixedPath
 	}
-	//log.Printf("Register CWND %d on path: %s\n", cwnd, currentPath.String())
+	log.Printf("Register CWND %d on path: %s\n", cwnd, fmt.Sprintf("%s %s %s", currentPath.Source, currentPath.Destination, currentPath.Fingerprint))
 	go stats.RegisterCwnd(currentPath, cwnd)
 }
 
@@ -195,7 +196,7 @@ func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	defer s.mtx.RUnlock()
 	r, ok := s.Remotes[ukey]
 	if !ok {
-		log.Println("!!!!Unknown destination!!!!")
+		log.Println("Reply got unknown destination!!!!")
 		return nil
 	}
 
@@ -205,36 +206,17 @@ func (s *MultiReplySelector) ReplyPath(src, dst UDPAddr) *Path {
 	} else {
 		rPath = r.paths[0]
 	}
-	//if !ok {
-	//	// We found no fixed path so check for a reply path we got from a received packet
-	//	s.mtx.RLock()
-	//	var rPath *Path
-	//	r, ok := s.Remotes[ukey]
-	//	if ok && len(r.paths) > 0 {
-	//		rPath = r.paths[0]
-	//	}
-	//	s.mtx.RUnlock()
-	//
-	//	if rPath == nil {
-	//		// only use the iaPaths if we have no reply path from a received packet
-	//		s.mtx.RLock()
-	//		paths, ok := s.IaPaths[dst.IA]
-	//		s.mtx.RUnlock()
-	//		if ok {
-	//			p = paths[0]
-	//		}
-	//	} else {
-	//		p = rPath
-	//	}
-	//}
 
-	go func() {
-		s.mtx.Lock()
-		defer s.mtx.Unlock()
-		s.RemotesPath[ukey] = rPath
-		stats.RegisterPath(rPath)
-		rPath.FetchMetadata()
-	}()
+	// only start this go routine which registers the path in the remotes map if it isn't present already
+	if s.RemotesPath[ukey] != rPath {
+		go func(p *Path, remoteDest UdpAddrKey, panStats *pathStatsDB) {
+			s.mtx.Lock()
+			defer s.mtx.Unlock()
+			s.RemotesPath[ukey] = p
+			panStats.RegisterPath(p)
+			p.FetchMetadata()
+		}(rPath, ukey, &stats)
+	}
 	return rPath
 }
 
@@ -340,9 +322,9 @@ func (s *MultiReplySelector) updateIA(src, dst UDPAddr, path *Path) {
 	}
 }
 
-func (s *MultiReplySelector) AskPathChanges() (UDPAddr, bool) {
+func (s *MultiReplySelector) AskPathChanges() ([]UDPAddr, bool) {
 	if len(s.Remotes) < 1 {
-		return UDPAddr{}, false
+		return []UDPAddr{}, false
 	}
 	log.Print("Do you want to perform path selection for remotes? [y/N]: ")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -350,25 +332,30 @@ func (s *MultiReplySelector) AskPathChanges() (UDPAddr, bool) {
 	scanner.Scan()
 	choice := scanner.Text()
 	if choice != "yes" && choice != "y" {
-		return UDPAddr{}, false
+		return []UDPAddr{}, false
 	}
-	remote, err := s.chooseRemoteInteractive()
+	remotes, err := s.chooseRemoteInteractive()
 	if err != nil {
 		log.Printf("Error choosing remote: %v \n", err)
-		return UDPAddr{}, false
+		return []UDPAddr{}, false
 	}
-	path, err := s.choosePathInteractive(remote)
+	path, err := s.choosePathInteractive(remotes)
 	if err != nil {
 		log.Printf("Error choosing path: %v \n", err)
-		return UDPAddr{}, false
+		return []UDPAddr{}, false
 	}
-	s.SetFixedPath(remote.ToUDPAddr(), path)
-	return remote.ToUDPAddr(), true
+
+	remoteAddrs := make([]UDPAddr, len(remotes))
+	for i, remote := range remotes {
+		s.SetFixedPath(remote.ToUDPAddr(), path)
+		remoteAddrs[i] = remote.ToUDPAddr()
+	}
+	return remoteAddrs, true
 }
 
-func (s *MultiReplySelector) chooseRemoteInteractive() (*UdpAddrKey, error) {
+func (s *MultiReplySelector) chooseRemoteInteractive() ([]*UdpAddrKey, error) {
 	log.Printf("Available remotes: \n")
-	indexToRemote := make(map[int]UdpAddrKey)
+	indexToRemote := make([]UdpAddrKey, len(s.Remotes))
 	i := 0
 	for remote, _ := range s.Remotes {
 		log.Printf("[%2d] %s\n", i, remote.String())
@@ -376,27 +363,49 @@ func (s *MultiReplySelector) chooseRemoteInteractive() (*UdpAddrKey, error) {
 		i++
 	}
 
-	var selectedRemote UdpAddrKey
 	scanner := bufio.NewScanner(os.Stdin)
 	log.Printf("Choose remote: ")
 	scanner.Scan()
 	remoteIndexStr := scanner.Text()
-	remoteIndex, err := strconv.Atoi(remoteIndexStr)
-	if err == nil && 0 <= remoteIndex && remoteIndex < len(s.Remotes) {
-		selectedRemote = indexToRemote[remoteIndex]
-	} else {
-		return nil, fmt.Errorf("Invalid remote index %v, valid indices range: [0, %v]\n", remoteIndex, len(s.Remotes)-1)
+	remoteIndexStr = strings.ReplaceAll(remoteIndexStr, " ", "")
+	indices := []int{}
+	indicesStr := strings.Split(remoteIndexStr, ",")
+	if len(indicesStr) < 1 {
+		return nil, fmt.Errorf("received malformed indice string %v", remoteIndexStr)
 	}
 
-	re := regexp.MustCompile(`\d{1,4}-([0-9a-f]{1,4}:){2}[0-9a-f]{1,4}`)
-	log.Printf("Using remote:\n %s\n", re.ReplaceAllStringFunc(fmt.Sprintf("%s", selectedRemote.String()), color.Cyan))
-	return &selectedRemote, nil
+	for _, index := range indicesStr {
+		idx, err := strconv.Atoi(index)
+		if err != nil {
+			return nil, fmt.Errorf("invalid remote index string %v. Can not convert to int", index)
+		}
+		indices = append(indices, idx)
+	}
+
+	selectedRemotes := make([]*UdpAddrKey, 0, len(indices))
+	for _, idx := range indices {
+		if 0 <= idx && idx < len(s.Remotes) {
+			selectedRemotes = append(selectedRemotes, &indexToRemote[idx])
+		} else {
+			fmt.Printf("Invalid remote index %v, valid indices range: [0, %v]. Ignoring it.\n", idx, len(s.Remotes)-1)
+		}
+	}
+
+	return selectedRemotes, nil
 }
 
-func (s *MultiReplySelector) choosePathInteractive(remote *UdpAddrKey) (path *Path, err error) {
-	paths := s.IaPaths[remote.IA]
+func (s *MultiReplySelector) choosePathInteractive(remotes []*UdpAddrKey) (path *Path, err error) {
 
-	log.Printf("Available paths to %s\n", remote.String())
+	exampleRemote := remotes[0]
+	for _, remote := range remotes {
+		if remote.IA != exampleRemote.IA {
+			return nil, fmt.Errorf("all remotes must be located in the same IA, but got %s != %s", exampleRemote.IA.String(), remote.IA.String())
+		}
+	}
+
+	paths := s.IaPaths[exampleRemote.IA]
+
+	log.Printf("Available paths to IA: %s\n", exampleRemote.IA.String())
 	for i, path := range paths {
 		log.Printf("[%2d] %s\n", i, fmt.Sprintf("%s", path))
 	}
@@ -425,8 +434,8 @@ func (s *MultiReplySelector) Close() error {
 
 // Export is used by stats exporters to lock the selector to be able to export it as JSON file
 func (s *MultiReplySelector) Export() ([]byte, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	for remoteKey, path := range s.RemotesPath {
 		path.FetchMetadata()
 		s.RemotesPath[remoteKey] = path
