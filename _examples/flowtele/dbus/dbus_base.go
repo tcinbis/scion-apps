@@ -2,7 +2,6 @@ package flowteledbus
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -29,17 +28,17 @@ type DbusBase struct {
 
 	SignalMinInterval   map[QuicDbusSignalType]time.Duration
 	lastSignalSent      map[QuicDbusSignalType]time.Time
-	lastSignalSentMutex sync.Mutex
+	lastSignalSentMutex sync.RWMutex
 
-	ackedBytesMutex sync.Mutex
+	ackedBytesMutex sync.RWMutex
 	ackedBytes      uint32
 
 	LogSignals              bool
 	SignalLogMinInterval    map[QuicDbusSignalType]time.Duration
 	lastSignalLogged        map[QuicDbusSignalType]time.Time
-	lastSignalLoggedMutex   sync.Mutex
+	lastSignalLoggedMutex   sync.RWMutex
 	logMessagesSkipped      map[QuicDbusSignalType]uint64
-	logMessagesSkippedMutex sync.Mutex
+	logMessagesSkippedMutex sync.RWMutex
 
 	LogPrefix string
 }
@@ -96,9 +95,9 @@ func (db *DbusBase) ShouldSendSignal(s DbusSignal) bool {
 		// no min interval is set
 		return true
 	}
-	db.lastSignalSentMutex.Lock()
+	db.lastSignalSentMutex.RLock()
 	lastSignalTime, ok := db.lastSignalSent[t]
-	db.lastSignalSentMutex.Unlock()
+	db.lastSignalSentMutex.RUnlock()
 	now := time.Now()
 	if !ok || now.Sub(lastSignalTime) > interval {
 		db.lastSignalSentMutex.Lock()
@@ -119,9 +118,9 @@ func (db *DbusBase) Send(s DbusSignal) error {
 			// no min interval is set
 			logSignal = true
 		} else {
-			db.lastSignalLoggedMutex.Lock()
+			db.lastSignalLoggedMutex.RLock()
 			lastSignalLogTime, ok := db.lastSignalLogged[t]
-			db.lastSignalLoggedMutex.Unlock()
+			db.lastSignalLoggedMutex.RUnlock()
 			now := time.Now()
 			if !ok || now.Sub(lastSignalLogTime) > interval {
 				db.lastSignalLoggedMutex.Lock()
@@ -137,11 +136,11 @@ func (db *DbusBase) Send(s DbusSignal) error {
 		}
 		if logSignal {
 			nSkipped := uint64(0)
-			db.logMessagesSkippedMutex.Lock()
+			db.logMessagesSkippedMutex.RLock()
 			if val2, ok2 := db.logMessagesSkipped[t]; ok2 {
 				nSkipped = val2
 			}
-			db.logMessagesSkippedMutex.Unlock()
+			db.logMessagesSkippedMutex.RUnlock()
 			switch t {
 			case Rtt:
 				db.Log("RTT (skipped %d) srtt = %.5fms", nSkipped, float32(s.Values()[3].(uint32))/1000)
@@ -161,7 +160,8 @@ func (db *DbusBase) Send(s DbusSignal) error {
 func (db *DbusBase) OpenSessionBus() error {
 	var err error
 	// open private session bus for each DbusBase object
-	db.Conn, err = dbus.SessionBusPrivate()
+	db.Conn, err = dbus.SessionBusPrivate(dbus.WithSignalHandler(dbus.NewSequentialSignalHandler()))
+	//db.Conn, err = dbus.SessionBusPrivate()
 	if err != nil {
 		return fmt.Errorf("Failed to connect to session bus: %s", err)
 	}
