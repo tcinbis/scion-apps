@@ -141,7 +141,7 @@ func (s *pathStatsDB) PathsWithoutCwnd() []*Path {
 	missing := make([]*Path, 0)
 
 	for _, ps := range s.paths {
-		if ps.Cwnd == nil {
+		if ps.Cwnd != nil {
 			continue
 		}
 		missing = append(missing, ps.Path)

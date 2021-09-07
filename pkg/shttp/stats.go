@@ -64,7 +64,7 @@ func (s *SHTTPStats) getCurrentClientID(cID quic.StatsClientID) (quic.StatsClien
 func (s *SHTTPStats) migrateToNewClientID(oldID, newID quic.StatsClientID) error {
 	cEntry, ok := s.clients[oldID]
 	if !ok {
-		return fmt.Errorf("%s is unkown can't migrate", oldID)
+		return unknownConnIDError
 	}
 
 	_, ok = s.clients[newID]
@@ -210,7 +210,13 @@ func (s *SHTTPStats) RemoveFlow(cID quic.StatsClientID) {
 func (s *SHTTPStats) NotifyChanged(oldID, newID quic.StatsClientID) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	check(s.migrateToNewClientID(oldID, newID))
+	err := s.migrateToNewClientID(oldID, newID)
+	if err == unknownConnIDError {
+		log.Error("Migration for unkown ID failed")
+	} else {
+		// in any other case check and panic
+		check(err)
+	}
 }
 
 func (s *SHTTPStats) lastRequest(cID quic.StatsClientID, r string) error {
