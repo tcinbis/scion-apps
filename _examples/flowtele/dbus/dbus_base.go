@@ -242,8 +242,13 @@ func (db *DbusBase) Register() error {
 	if err := db.registerMethods(); err != nil {
 		return err
 	}
-	if err := db.registerSignalListeners(); err != nil {
-		return err
+	if len(db.SignalMatchOptions) != 0 {
+		// only register a signal listener, if match options are defined.
+		// otherwise with empty match options we receive ALL signals which puts unnecessary stress on the system
+		// and might cause excessive use of system's memory
+		if err := db.registerSignalListeners(); err != nil {
+			return err
+		}
 	}
 	if err := db.registerIntrospectMethod(); err != nil {
 		return err
