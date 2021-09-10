@@ -160,8 +160,8 @@ func (db *DbusBase) Send(s DbusSignal) error {
 func (db *DbusBase) OpenSessionBus() error {
 	var err error
 	// open private session bus for each DbusBase object
-	db.Conn, err = dbus.SessionBusPrivate(dbus.WithSignalHandler(dbus.NewSequentialSignalHandler()))
-	//db.Conn, err = dbus.SessionBusPrivate()
+	//db.Conn, err = dbus.Se ssionBusPrivate(dbus.WithSignalHandler(dbus.NewSequentialSignalHandler()))
+	db.Conn, err = dbus.SessionBusPrivate()
 	if err != nil {
 		return fmt.Errorf("Failed to connect to session bus: %s", err)
 	}
