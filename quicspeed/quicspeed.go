@@ -5,13 +5,17 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/netsec-ethz/scion-apps/pkg/appnet/appquic"
-	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"io"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/lucas-clemente/quic-go"
+	"github.com/netsec-ethz/scion-apps/pkg/appnet/appquic"
+	"github.com/netsec-ethz/scion-apps/pkg/pan"
+	"github.com/scionproto/scion/go/lib/log"
 
 	"github.com/scionproto/scion/go/lib/serrors"
 	"github.com/scionproto/scion/go/lib/snet"
@@ -29,13 +33,17 @@ const (
 	MEGABYTE = 1000 * KILOBYTE
 )
 
+var (
+	port        = flag.Uint("port", 0, "[Server] Local port to listen on")
+	local       = flag.String("local", "", "[Server] If specified defines the local address to listen on.")
+	payload     = flag.Uint("payload", 10000000, "[Client] Size of each burst in bytes")
+	interactive = flag.Bool("interactive", false, "[Client] Select the path interactively")
+	usePan      = flag.Bool("pan", false, "[Server] Whether to use PAN instead of appquic.")
+	remoteAddr  = flag.String("remote", "", "[Client] Remote (i.e. the server's) SCION Address (e.g. 17-ffaa:1:1,[127.0.0.1]:12345)")
+	scion       = flag.Bool("scion", false, "[Server/Client] Enables the use of SCION.")
+)
+
 func main() {
-	port := flag.Uint("port", 0, "[Server] Local port to listen on")
-	local := flag.String("local", "", "[Server] If specified defines the local address to listen on.")
-	payload := flag.Uint("payload", 10000000, "[Client] Size of each burst in bytes")
-	interactive := flag.Bool("interactive", false, "[Client] Select the path interactively")
-	usePan := flag.Bool("pan", false, "[Server] Whether to use PAN instead of appquic.")
-	remoteAddr := flag.String("remote", "", "[Client] Remote (i.e. the server's) SCION Address (e.g. 17-ffaa:1:1,[127.0.0.1]:12345)")
 	flag.Parse()
 
 	if (*port > 0) == (len(*remoteAddr) > 0) {
@@ -68,11 +76,12 @@ func send(stream quic.Stream, payloadSize int) {
 		_, err := stream.Write(buffer)
 		if err != nil {
 			fmt.Println(err)
+			break
 		}
 	}
 }
 
-func receive(stream quic.Stream, payloadSize int) {
+func receive(ctx context.Context, stream quic.Stream, payloadSize int) {
 	stream.Write([]byte{0})
 	_, err := io.ReadFull(stream, make([]byte, 1))
 	if err != nil {
@@ -80,51 +89,76 @@ func receive(stream quic.Stream, payloadSize int) {
 	}
 
 	fmt.Println("Stream opened. Ready for receiving.")
+	avg := make([]float64, 0, 1000)
 	buffer := make([]byte, payloadSize)
 	receivedCount := 0
+loop:
 	for {
-		tStart := time.Now()
-		count, err := io.ReadFull(stream, buffer)
-		tEnd := time.Now()
-		if err != nil {
-			fmt.Println(err)
-			continue
+		select {
+		case <-ctx.Done():
+			break loop
+		default:
+			tStart := time.Now()
+			count, err := io.ReadFull(stream, buffer)
+			tEnd := time.Now()
+			if err != nil {
+				fmt.Println(err)
+				break loop
+			}
+			receivedCount += count
+			tCur := tEnd.Sub(tStart).Seconds()
+			curRate := float64(count*BYTE) / tCur / MEGABIT
+			avg = append(avg, curRate)
+			fmt.Printf("cur: %.1fMBit/s %.2fs\n", curRate, tCur)
 		}
-		receivedCount += count
-		tCur := tEnd.Sub(tStart).Seconds()
-		curRate := float64(count*BYTE) / tCur / MEGABIT
-
-		fmt.Printf("cur: %.1fMBit/s %.2fs\n", curRate, tCur)
 	}
+
+	avgSum := 0.0
+	for _, v := range avg {
+		avgSum += v
+	}
+	fmt.Printf("Average througput: %.2f Mbit/s\n", avgSum/float64(len(avg)))
 }
 
 func runClient(address string, payloadSize int, interactive bool) error {
-	addr, err := appnet.ResolveUDPAddr(address)
-	if err != nil {
-		return err
-	}
+	var sess quic.Session
 	var path snet.Path
-	if interactive {
-		path, err = appnet.ChoosePathInteractive(addr.IA)
+	if *scion {
+		addr, err := appnet.ResolveUDPAddr(address)
 		if err != nil {
 			return err
 		}
-		appnet.SetPath(addr, path)
+		if interactive {
+			path, err = appnet.ChoosePathInteractive(addr.IA)
+			if err != nil {
+				return err
+			}
+			appnet.SetPath(addr, path)
+		} else {
+			paths, err := appnet.QueryPaths(addr.IA)
+			if err != nil {
+				return err
+			}
+			path = paths[0]
+		}
+		sess, err = appquic.DialAddr(addr, "", &tls.Config{NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+		if err != nil {
+			return err
+		}
 	} else {
-		paths, err := appnet.QueryPaths(addr.IA)
+		var err error
+		sess, err = quic.DialAddr(address, &tls.Config{NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
 		if err != nil {
 			return err
 		}
-		path = paths[0]
-	}
-
-	sess, err := appquic.DialAddr(addr, "", &tls.Config{NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
-	if err != nil {
-		return err
 	}
 	defer sess.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "NoError")
 
-	fmt.Printf("Running client using payload size %v via %v\n", payloadSize, path)
+	fmt.Printf("Running client using payload size %v", payloadSize)
+	if *scion {
+		fmt.Printf("via %v", path)
+	}
+	fmt.Printf("\n")
 
 	stream, err := sess.OpenStreamSync(context.Background())
 	if err != nil {
@@ -143,22 +177,36 @@ func runClient(address string, payloadSize int, interactive bool) error {
 }
 
 func runServer(localAddr string, port, payloadSize int, usePan bool) error {
+	sigs := make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		defer log.HandlePanic()
+		sig := <-sigs
+		fmt.Printf("%v\n", sig)
+		cancel()
+	}()
 	defer cancel()
+
 	var listener quic.Listener
 	var err error
-	if usePan {
-		listener, err = pan.ListenQUIC(ctx, &net.UDPAddr{Port: port}, nil, &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
-		fmt.Printf("%v\n", listener.Addr())
-	} else if localAddr != "" {
-		listener, err = appquic.Listen(&net.UDPAddr{
-			IP:   net.ParseIP(localAddr),
-			Port: port,
-		}, &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
-		fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr())
+	if *scion {
+		if usePan {
+			listener, err = pan.ListenQUIC(ctx, &net.UDPAddr{Port: port}, nil, &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+			fmt.Printf("%v\n", listener.Addr())
+		} else if localAddr != "" {
+			listener, err = appquic.Listen(&net.UDPAddr{
+				IP:   net.ParseIP(localAddr),
+				Port: port,
+			}, &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+			fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr())
+		} else {
+			listener, err = appquic.ListenPort(uint16(port), &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+			fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr())
+		}
 	} else {
-		listener, err = appquic.ListenPort(uint16(port), &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
-		fmt.Printf("%v,%v\n", appnet.DefNetwork().IA, listener.Addr())
+		listener, err = quic.ListenAddr(fmt.Sprintf("%s:%d", localAddr, port), &tls.Config{Certificates: appquic.GetDummyTLSCerts(), NextProtos: []string{"speed"}, InsecureSkipVerify: true}, nil)
+		fmt.Printf("%v\n", listener.Addr())
 	}
 
 	if err != nil {
@@ -176,7 +224,6 @@ func runServer(localAddr string, port, payloadSize int, usePan bool) error {
 		return fmt.Errorf("Error accepting streams: %s\n", err)
 	}
 
-	//send(stream, payloadSize)
-	receive(stream, payloadSize)
+	receive(ctx, stream, payloadSize)
 	return nil
 }
