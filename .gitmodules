@@ -10,3 +10,7 @@
 	path = csl331
 	url = git@bitbucket.org:JasonSong2019/csl331.git
     branch = tom/scion
+[submodule "godash"]
+	path = godash
+	url = git@github.com:tcinbis/godash.git
+    branch = master
