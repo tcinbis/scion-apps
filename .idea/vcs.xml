@@ -3,6 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/csl331" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/godash" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/quic-go" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/scion" vcs="Git" />
   </component>
