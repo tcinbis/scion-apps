@@ -39,7 +39,6 @@ type Listener interface {
 	net.PacketConn
 
 	ReadFromPath(b []byte) (int, UDPAddr, *Path, error)
-	//MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error)
 	GetSelector() ReplySelector
 	SetSelector(s ReplySelector)
 }
@@ -77,37 +76,6 @@ func ListenUDP(ctx context.Context, local *net.UDPAddr,
 		selector: selector,
 	}, nil
 }
-
-//func (c *UDPListener) MakeConnectionToRemote(ctx context.Context, remote UDPAddr, policy Policy, selector Selector) (Conn, error) {
-//	if selector == nil {
-//		selector = &DefaultSelector{}
-//	}
-//	fmt.Println("MakeConnectionToRemote called")
-//	var subscriber *pathRefreshSubscriber = nil
-//	if remote.IA != c.local.IA {
-//		// If selector is not already populated with a path give it the reply path that we have
-//		if selector.Path() == nil {
-//			selector.SetPaths([]*Path{c.selector.ReplyPath(c.local, remote)})
-//		}
-//
-//		subscriber = pathRefreshSubscriberMake(remote, policy, selector)
-//		go func() {
-//			err := subscriber.attach(ctx)
-//			if err != nil {
-//				fmt.Printf("Failed to attach path refresh subscriber for UDPListener-connection %v\n", err)
-//			}
-//		}()
-//	}
-//
-//	return &connection{
-//		baseUDPConn: &c.baseUDPConn,
-//		isListener:  true,
-//		local:       c.local,
-//		remote:      remote,
-//		subscriber:  subscriber,
-//		Selector:    selector,
-//	}, nil
-//}
 
 func (c *UDPListener) LocalAddr() net.Addr {
 	return c.local
