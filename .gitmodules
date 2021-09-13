@@ -13,4 +13,3 @@
 [submodule "godash"]
 	path = godash
 	url = git@github.com:tcinbis/godash.git
-    branch = master
